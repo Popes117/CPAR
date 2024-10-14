@@ -1,4 +1,4 @@
-CPP = g++ -Wall 
+CPP = g++ -Wall -O3 -Ofast
 SRCS = main.cpp fluid_solver.cpp EventManager.cpp
 
 all:

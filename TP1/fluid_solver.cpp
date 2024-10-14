@@ -1,13 +1,12 @@
 #include "fluid_solver.h"
 #include <cmath>
+#include <algorithm>
 
 #define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
-#define SWAP(x0, x)                                                            \
-  {                                                                            \
-    float *tmp = x0;                                                           \
-    x0 = x;                                                                    \
-    x = tmp;                                                                   \
-  }
+// SWAP que vinha com o código
+#define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}
+//SWAP novo sem pointers (test purposes)
+//#define SWAP(x0, x) { float tmp = x0; x0 = x; x = tmp; }
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define LINEARSOLVERTIMES 20
 
@@ -45,12 +44,9 @@ void set_bnd(int M, int N, int O, int b, float *x) {
 
   // Set corners
   x[IX(0, 0, 0)] = 0.33f * (x[IX(1, 0, 0)] + x[IX(0, 1, 0)] + x[IX(0, 0, 1)]);
-  x[IX(M + 1, 0, 0)] =
-      0.33f * (x[IX(M, 0, 0)] + x[IX(M + 1, 1, 0)] + x[IX(M + 1, 0, 1)]);
-  x[IX(0, N + 1, 0)] =
-      0.33f * (x[IX(1, N + 1, 0)] + x[IX(0, N, 0)] + x[IX(0, N + 1, 1)]);
-  x[IX(M + 1, N + 1, 0)] = 0.33f * (x[IX(M, N + 1, 0)] + x[IX(M + 1, N, 0)] +
-                                    x[IX(M + 1, N + 1, 1)]);
+  x[IX(M + 1, 0, 0)] = 0.33f * (x[IX(M, 0, 0)] + x[IX(M + 1, 1, 0)] + x[IX(M + 1, 0, 1)]);
+  x[IX(0, N + 1, 0)] = 0.33f * (x[IX(1, N + 1, 0)] + x[IX(0, N, 0)] + x[IX(0, N + 1, 1)]);
+  x[IX(M + 1, N + 1, 0)] = 0.33f * (x[IX(M, N + 1, 0)] + x[IX(M + 1, N, 0)] + x[IX(M + 1, N + 1, 1)]);
 }
 
 // Linear solve for implicit methods (diffusion)
@@ -60,11 +56,9 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,
     for (int i = 1; i <= M; i++) {
       for (int j = 1; j <= N; j++) {
         for (int k = 1; k <= O; k++) {
-          x[IX(i, j, k)] = (x0[IX(i, j, k)] +
-                            a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
-                                 x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                                 x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) /
-                           c;
+          x[IX(i, j, k)] = (x0[IX(i, j, k)] + a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
+                              x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
+                              x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) / c;
         }
       }
     }
@@ -73,16 +67,15 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,
 }
 
 // Diffusion step (uses implicit method)
-void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff,
-             float dt) {
-  int max = MAX(MAX(M, N), O);
-  float a = dt * diff * max * max;
-  lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
+void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
+    int max = MAX(MAX(M, N), O);
+    float a = dt * diff * max * max;
+    lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
 }
 
 // Advection step (uses velocity field to move quantities)
-void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
-            float *w, float dt) {
+void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
+  
   float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
 
   for (int i = 1; i <= M; i++) {
@@ -93,6 +86,7 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
         float z = k - dtZ * w[IX(i, j, k)];
 
         // Clamp to grid boundaries
+        // DEVE DAR PARA MELHORAR ISTO 
         if (x < 0.5f)
           x = 0.5f;
         if (x > M + 0.5f)
@@ -114,11 +108,10 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
         float t1 = y - j0, t0 = 1 - t1;
         float u1 = z - k0, u0 = 1 - u1;
 
-        d[IX(i, j, k)] =
-            s0 * (t0 * (u0 * d0[IX(i0, j0, k0)] + u1 * d0[IX(i0, j0, k1)]) +
-                  t1 * (u0 * d0[IX(i0, j1, k0)] + u1 * d0[IX(i0, j1, k1)])) +
-            s1 * (t0 * (u0 * d0[IX(i1, j0, k0)] + u1 * d0[IX(i1, j0, k1)]) +
-                  t1 * (u0 * d0[IX(i1, j1, k0)] + u1 * d0[IX(i1, j1, k1)]));
+        d[IX(i, j, k)] = s0 * (t0 * (u0 * d0[IX(i0, j0, k0)] + u1 * d0[IX(i0, j0, k1)]) +
+                         t1 * (u0 * d0[IX(i0, j1, k0)] + u1 * d0[IX(i0, j1, k1)])) +
+                         s1 * (t0 * (u0 * d0[IX(i1, j0, k0)] + u1 * d0[IX(i1, j0, k1)]) +
+                         t1 * (u0 * d0[IX(i1, j1, k0)] + u1 * d0[IX(i1, j1, k1)]));
       }
     }
   }
@@ -132,11 +125,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p,
   for (int i = 1; i <= M; i++) {
     for (int j = 1; j <= N; j++) {
       for (int k = 1; k <= O; k++) {
-        div[IX(i, j, k)] =
-            -0.5f *
-            (u[IX(i + 1, j, k)] - u[IX(i - 1, j, k)] + v[IX(i, j + 1, k)] -
-             v[IX(i, j - 1, k)] + w[IX(i, j, k + 1)] - w[IX(i, j, k - 1)]) /
-            MAX(M, MAX(N, O));
+        div[IX(i, j, k)] = -0.5f * (u[IX(i + 1, j, k)] - u[IX(i - 1, j, k)] + v[IX(i, j + 1, k)] -
+                           v[IX(i, j - 1, k)] + w[IX(i, j, k + 1)] - w[IX(i, j, k - 1)]) / MAX(M, MAX(N, O));
         p[IX(i, j, k)] = 0;
       }
     }
