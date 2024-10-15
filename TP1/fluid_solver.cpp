@@ -51,6 +51,46 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   x[IX(M + 1, N + 1, 0)] = 0.33f * (x[IX(M, N + 1, 0)] + x[IX(M + 1, N, 0)] + x[IX(M + 1, N + 1, 1)]);
 }
 
+void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
+    int blockSize = 4;  // Tamanho do bloco (ajustável dependendo da arquitetura)
+
+    int val = M + 2;
+    int val2 = N + 2;
+
+    for (int l = 0; l < LINEARSOLVERTIMES; l++) {
+        for (int kb = 1; kb <= O; kb += blockSize) {
+            for (int jb = 1; jb <= N; jb += blockSize) {
+                for (int ib = 1; ib <= M; ib += blockSize) {
+                    
+                    // Processa um bloco de tamanho blockSize x blockSize x blockSize
+                    for (int k = kb; k < std::min(kb + blockSize, O + 1); k++) {
+                        for (int j = jb; j < std::min(jb + blockSize, N + 1); j++) {
+                            for (int i = ib; i < std::min(ib + blockSize, M + 1); i++) {
+                                int idx = IX(i, j, k);
+                                int idx_im1 = IX(i - 1, j, k);
+                                int idx_ip1 = IX(i + 1, j, k);
+                                int idx_jm1 = IX(i, j - 1, k);
+                                int idx_jp1 = IX(i, j + 1, k);
+                                int idx_km1 = IX(i, j, k - 1);
+                                int idx_kp1 = IX(i, j, k + 1);
+
+                                // Realiza o cálculo com resultados armazenados temporariamente
+                                x[idx] = (x0[idx] + a * (x[idx_im1] + x[idx_ip1] +
+                                                         x[idx_jm1] + x[idx_jp1] +
+                                                         x[idx_km1] + x[idx_kp1])) / c;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Aplica as condições de contorno após cada iteração
+        set_bnd(M, N, O, b, x);
+    }
+}
+
+
+/*
 // Linear solve for implicit methods (diffusion)
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,float c) {
 
@@ -58,9 +98,9 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,float c)
   int val2 = N + 2;
 
   for (int l = 0; l < LINEARSOLVERTIMES; l++) {
-    for (int i = 1; i <= M; i++) {
+    for (int k = 1; k <= O; k++) {
       for (int j = 1; j <= N; j++) {
-        for (int k = 1; k <= O; k++) {
+        for (int i = 1; i <= M; i++) {
           int idx = IX(i, j, k);                      
           x[idx] = (x0[idx] + a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
                               x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
@@ -71,7 +111,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,float c)
     set_bnd(M, N, O, b, x);
   }
 }
-
+*/
 // Diffusion step (uses implicit method)
 void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
     int max = MAX(MAX(M, N), O);
