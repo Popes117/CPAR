@@ -2,7 +2,7 @@
 #include <cmath>
 #include <algorithm>
 
-#define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
+#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))
 // SWAP que vinha com o código
 #define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}
 //SWAP novo sem pointers (test purposes)
@@ -21,6 +21,8 @@ void add_source(int M, int N, int O, float *x, float *s, float dt) {
 // Set boundary conditions
 void set_bnd(int M, int N, int O, int b, float *x) {
   int i, j;
+  int val = M + 2;
+  int val2 = N + 2;
 
   // Set boundary on faces
   for (i = 1; i <= M; i++) {
@@ -50,13 +52,17 @@ void set_bnd(int M, int N, int O, int b, float *x) {
 }
 
 // Linear solve for implicit methods (diffusion)
-void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,
-               float c) {
+void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,float c) {
+
+  int val = M + 2;
+  int val2 = N + 2;
+
   for (int l = 0; l < LINEARSOLVERTIMES; l++) {
     for (int i = 1; i <= M; i++) {
       for (int j = 1; j <= N; j++) {
         for (int k = 1; k <= O; k++) {
-          x[IX(i, j, k)] = (x0[IX(i, j, k)] + a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
+          int idx = IX(i, j, k);                      
+          x[idx] = (x0[idx] + a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
                               x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
                               x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) / c;
         }
@@ -77,6 +83,8 @@ void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float 
 void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
   
   float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
+  int val = M + 2;
+  int val2 = N + 2;
 
   for (int i = 1; i <= M; i++) {
     for (int j = 1; j <= N; j++) {
@@ -120,14 +128,19 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
 
 // Projection step to ensure incompressibility (make the velocity field
 // divergence-free)
-void project(int M, int N, int O, float *u, float *v, float *w, float *p,
-             float *div) {
+void project(int M, int N, int O, float *u, float *v, float *w, float *p,float *div) {
+
+  int val = M + 2;
+  int val2 = N + 2;
+  int max = MAX(M, MAX(N, O));
+
   for (int i = 1; i <= M; i++) {
     for (int j = 1; j <= N; j++) {
       for (int k = 1; k <= O; k++) {
-        div[IX(i, j, k)] = -0.5f * (u[IX(i + 1, j, k)] - u[IX(i - 1, j, k)] + v[IX(i, j + 1, k)] -
-                           v[IX(i, j - 1, k)] + w[IX(i, j, k + 1)] - w[IX(i, j, k - 1)]) / MAX(M, MAX(N, O));
-        p[IX(i, j, k)] = 0;
+        int idx = IX(i, j, k);                      
+        div[idx] = -0.5f * (u[IX(i + 1, j, k)] - u[IX(i - 1, j, k)] + v[IX(i, j + 1, k)] -
+                           v[IX(i, j - 1, k)] + w[IX(i, j, k + 1)] - w[IX(i, j, k - 1)]) / max;
+        p[idx] = 0;
       }
     }
   }
@@ -136,12 +149,14 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p,
   set_bnd(M, N, O, 0, p);
   lin_solve(M, N, O, 0, p, div, 1, 6);
 
+
   for (int i = 1; i <= M; i++) {
     for (int j = 1; j <= N; j++) {
       for (int k = 1; k <= O; k++) {
-        u[IX(i, j, k)] -= 0.5f * (p[IX(i + 1, j, k)] - p[IX(i - 1, j, k)]);
-        v[IX(i, j, k)] -= 0.5f * (p[IX(i, j + 1, k)] - p[IX(i, j - 1, k)]);
-        w[IX(i, j, k)] -= 0.5f * (p[IX(i, j, k + 1)] - p[IX(i, j, k - 1)]);
+        int idx = IX(i, j, k);                      
+        u[idx] -= 0.5f * (p[IX(i + 1, j, k)] - p[IX(i - 1, j, k)]);
+        v[idx] -= 0.5f * (p[IX(i, j + 1, k)] - p[IX(i, j - 1, k)]);
+        w[idx] -= 0.5f * (p[IX(i, j, k + 1)] - p[IX(i, j, k - 1)]);
       }
     }
   }
@@ -151,8 +166,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p,
 }
 
 // Step function for density
-void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v,
-               float *w, float diff, float dt) {
+void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt) {
+  
   add_source(M, N, O, x, x0, dt);
   SWAP(x0, x);
   diffuse(M, N, O, 0, x, x0, diff, dt);
@@ -161,8 +176,8 @@ void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v,
 }
 
 // Step function for velocity
-void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0,
-              float *v0, float *w0, float visc, float dt) {
+void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, float *v0, float *w0, float visc, float dt) {
+
   add_source(M, N, O, u, u0, dt);
   add_source(M, N, O, v, v0, dt);
   add_source(M, N, O, w, w0, dt);
