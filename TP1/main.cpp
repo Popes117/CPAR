@@ -2,6 +2,8 @@
 #include "fluid_solver.h"
 #include <iostream>
 #include <vector>
+#include <iostream>
+#include <chrono>
 
 #define SIZE 42
 
@@ -105,9 +107,20 @@ void simulate(EventManager &eventManager, int timesteps) {
 }
 
 int main() {
+
+  //auto start = std::chrono::high_resolution_clock::now();
+
   // Initialize EventManager
   EventManager eventManager;
   eventManager.read_events("events.txt");
+
+  //int val = M + 2;
+  //int val2 = N + 2;
+
+  //for(int i = 1; i < 200; i++){
+  //  std::cout << "IX(1,1," << i << ") : " << IX(1,1,i) << std::endl;
+  //  std::cout << "IX(1,2," << i << ") : " << IX(1,2,i) << std::endl;
+  //}
 
   // Get the total number of timesteps from the event file
   int timesteps = eventManager.get_total_timesteps();
@@ -127,6 +140,14 @@ int main() {
 
   // Free memory
   free_data();
+
+  //auto end = std::chrono::high_resolution_clock::now();
+  
+  // Calcula a duração em milissegundos
+  //std::chrono::duration<float, std::milli> duration = end - start;
+  //std::chrono::duration<float> duration2 = end - start;
+  //std::cout << "Tempo de execução: " << duration.count() << " ms" << std::endl;
+  //std::cout << "Tempo de execução: " << duration2.count() << " s" << std::endl;
 
   return 0;
 }
