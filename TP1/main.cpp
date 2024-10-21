@@ -16,7 +16,12 @@ static int O = SIZE;
 static float dt = 0.1f;      // Time delta
 static float diff = 0.0001f; // Diffusion constant
 static float visc = 0.0001f; // Viscosity constant
-
+static int val = M + 2;
+static int val2 = N + 2;
+static int iX = M *0.5;
+static int jX = N *0.5;
+static int kX = O *0.5;
+static int index = IX(iX, jX, kX);
 // Fluid simulation arrays
 static float *u, *v, *w, *u_prev, *v_prev, *w_prev;
 static float *dens, *dens_prev;
@@ -63,10 +68,6 @@ void free_data() {
 
 // Apply events (source or force) for the current timestep
 void apply_events(const std::vector<Event> &events) {
-  int i = M / 2, j = N / 2, k = O / 2;
-  int val = M + 2;
-  int val2 = N + 2;
-  int index = IX(i, j, k);
 
   for (const auto &event : events) {
     if (event.type == ADD_SOURCE) {

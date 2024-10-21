@@ -3,24 +3,22 @@ Flat profile:
 Each sample counts as 0.01 seconds.
   %   cumulative   self              self     total           
  time   seconds   seconds    calls   s/call   s/call  name    
- 41.57      0.64     0.64      100     0.01     0.01  vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float)
- 38.97      1.24     0.60      300     0.00     0.00  lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0]
- 13.64      1.45     0.21      400     0.00     0.00  advect(int, int, int, int, float*, float*, float*, float*, float*, float)
-  2.60      1.49     0.04      200     0.00     0.00  project(int, int, int, float*, float*, float*, float*, float*)
-  1.95      1.52     0.03     2200     0.00     0.00  set_bnd(int, int, int, int, float*) [clone .constprop.0]
-  0.65      1.53     0.01     6400     0.00     0.00  set_bnd(int, int, int, int, float*) [clone .constprop.3]
-  0.65      1.54     0.01     2200     0.00     0.00  set_bnd(int, int, int, int, float*) [clone .constprop.2]
-  0.00      1.54     0.00     2200     0.00     0.00  set_bnd(int, int, int, int, float*) [clone .constprop.1]
-  0.00      1.54     0.00      400     0.00     0.00  set_bnd(int, int, int, int, float*)
-  0.00      1.54     0.00      100     0.00     0.00  apply_events(std::vector<Event, std::allocator<Event> > const&)
-  0.00      1.54     0.00      100     0.00     0.00  dens_step(int, int, int, float*, float*, float*, float*, float*, float, float)
-  0.00      1.54     0.00      100     0.00     0.00  EventManager::get_events_at_timestamp(int) const
-  0.00      1.54     0.00       20     0.00     0.00  void std::vector<Event, std::allocator<Event> >::_M_realloc_append<Event const&>(Event const&)
-  0.00      1.54     0.00        1     0.00     0.00  clear_data()
-  0.00      1.54     0.00        1     0.00     0.00  allocate_data()
-  0.00      1.54     0.00        1     0.00     1.54  simulate(EventManager&, int)
-  0.00      1.54     0.00        1     0.00     0.00  free_data()
-  0.00      1.54     0.00        1     0.00     0.00  EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+ 42.96      0.67     0.67        1     0.67     1.56  vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float)
+ 41.67      1.32     0.65      300     0.00     0.00  set_bnd(int, int, int, int, float*) [clone .constprop.3]
+ 12.82      1.52     0.20      200     0.00     0.00  lin_solve(int, int, int, int, float*, float*, float, float)
+  1.92      1.55     0.03      100     0.00     0.01  project(int, int, int, float*, float*, float*, float*, float*)
+  0.64      1.56     0.01     4301     0.00     0.00  set_bnd(int, int, int, int, float*) [clone .constprop.0]
+  0.00      1.56     0.00     6400     0.00     0.00  set_bnd(int, int, int, int, float*) [clone .constprop.2]
+  0.00      1.56     0.00     2200     0.00     0.00  set_bnd(int, int, int, int, float*) [clone .constprop.1]
+  0.00      1.56     0.00      400     0.00     0.00  set_bnd(int, int, int, int, float*)
+  0.00      1.56     0.00      400     0.00     0.00  lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0]
+  0.00      1.56     0.00      100     0.00     0.00  dens_step(int, int, int, float*, float*, float*, float*, float*, float, float)
+  0.00      1.56     0.00      100     0.00     0.00  free_data()
+  0.00      1.56     0.00      100     0.00     0.00  EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+  0.00      1.56     0.00       20     0.00     0.00  _fini
+  0.00      1.56     0.00        1     0.00     0.00  clear_data()
+  0.00      1.56     0.00        1     0.00     0.00  allocate_data()
+  0.00      1.56     0.00        1     0.00     0.00  _start
 
  %         the percentage of the total running time of the
 time       program used by this function.
@@ -58,99 +56,94 @@ notice and this notice are preserved.
 		     Call graph (explanation follows)
 
 
-granularity: each sample hit covers 2 byte(s) for 0.65% of 1.54 seconds
+granularity: each sample hit covers 2 byte(s) for 0.64% of 1.56 seconds
 
 index % time    self  children    called     name
                                                  <spontaneous>
-[1]    100.0    0.00    1.54                 main [1]
-                0.00    1.54       1/1           simulate(EventManager&, int) [2]
-                0.00    0.00       1/1           EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) [22]
-                0.00    0.00       1/1           allocate_data() [20]
-                0.00    0.00       1/1           clear_data() [19]
-                0.00    0.00       1/1           free_data() [21]
+[1]    100.0    0.00    1.56                 _init [1]
+                0.67    0.89       1/1           vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [2]
+                0.00    0.00       1/4101        set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
+                0.00    0.00       1/1           _start [20]
+                0.00    0.00       1/1           allocate_data() [19]
 -----------------------------------------------
-                0.00    1.54       1/1           main [1]
-[2]    100.0    0.00    1.54       1         simulate(EventManager&, int) [2]
-                0.64    0.42     100/100         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [3]
-                0.00    0.26     100/100         dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [6]
-                0.02    0.20     100/200         project(int, int, int, float*, float*, float*, float*, float*) [5]
-                0.00    0.00     100/2200        set_bnd(int, int, int, int, float*) [clone .constprop.0] [8]
-                0.00    0.00     100/100         EventManager::get_events_at_timestamp(int) const [17]
-                0.00    0.00     100/100         apply_events(std::vector<Event, std::allocator<Event> > const&) [16]
+                0.67    0.89       1/1           _init [1]
+[2]    100.0    0.67    0.89       1         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [2]
+                0.04    0.75    4100/4101        set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
+                0.10    0.00     100/200         lin_solve(int, int, int, int, float*, float*, float, float) [6]
+                0.00    0.00    2000/2200        set_bnd(int, int, int, int, float*) [clone .constprop.1] [11]
+                0.00    0.00     300/400         lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0] [13]
+                0.00    0.00     300/400         set_bnd(int, int, int, int, float*) [12]
 -----------------------------------------------
-                0.64    0.42     100/100         simulate(EventManager&, int) [2]
-[3]     68.8    0.64    0.42     100         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [3]
-                0.02    0.20     100/200         project(int, int, int, float*, float*, float*, float*, float*) [5]
-                0.16    0.00     300/400         advect(int, int, int, int, float*, float*, float*, float*, float*, float) [7]
-                0.03    0.00    2100/2200        set_bnd(int, int, int, int, float*) [clone .constprop.0] [8]
-                0.01    0.00    2000/2200        set_bnd(int, int, int, int, float*) [clone .constprop.2] [10]
-                0.00    0.00    2000/2200        set_bnd(int, int, int, int, float*) [clone .constprop.1] [14]
-                0.00    0.00     300/400         set_bnd(int, int, int, int, float*) [15]
+[3]     50.6    0.04    0.75    4101+300     <cycle 1 as a whole> [3]
+                0.03    0.65     100             project(int, int, int, float*, float*, float*, float*, float*) <cycle 1> [4]
+                0.01    0.10    4301+100         set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
 -----------------------------------------------
-                0.20    0.00     100/300         dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [6]
-                0.40    0.01     200/300         project(int, int, int, float*, float*, float*, float*, float*) [5]
-[4]     39.6    0.60    0.01     300         lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0] [4]
-                0.01    0.00    6000/6400        set_bnd(int, int, int, int, float*) [clone .constprop.3] [9]
+                                 100             set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
+[4]     43.6    0.03    0.65     100         project(int, int, int, float*, float*, float*, float*, float*) <cycle 1> [4]
+                0.65    0.00     300/300         set_bnd(int, int, int, int, float*) [clone .constprop.3] [5]
+                0.00    0.00     400/6400        set_bnd(int, int, int, int, float*) [clone .constprop.2] [10]
+                0.00    0.00     200/2200        set_bnd(int, int, int, int, float*) [clone .constprop.1] [11]
+                0.00    0.00     100/400         lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0] [13]
+                0.00    0.00     100/400         set_bnd(int, int, int, int, float*) [12]
+                                 200             set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
 -----------------------------------------------
-                0.02    0.20     100/200         simulate(EventManager&, int) [2]
-                0.02    0.20     100/200         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [3]
-[5]     29.1    0.04    0.41     200         project(int, int, int, float*, float*, float*, float*, float*) [5]
-                0.40    0.01     200/300         lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0] [4]
-                0.00    0.00     200/2200        set_bnd(int, int, int, int, float*) [clone .constprop.2] [10]
-                0.00    0.00     400/6400        set_bnd(int, int, int, int, float*) [clone .constprop.3] [9]
-                0.00    0.00     200/2200        set_bnd(int, int, int, int, float*) [clone .constprop.1] [14]
+                0.65    0.00     300/300         project(int, int, int, float*, float*, float*, float*, float*) <cycle 1> [4]
+[5]     41.7    0.65    0.00     300         set_bnd(int, int, int, int, float*) [clone .constprop.3] [5]
+                0.00    0.00    6000/6400        set_bnd(int, int, int, int, float*) [clone .constprop.2] [10]
 -----------------------------------------------
-                0.00    0.26     100/100         simulate(EventManager&, int) [2]
-[6]     16.6    0.00    0.26     100         dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [6]
-                0.20    0.00     100/300         lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0] [4]
-                0.05    0.00     100/400         advect(int, int, int, int, float*, float*, float*, float*, float*, float) [7]
-                0.00    0.00     100/400         set_bnd(int, int, int, int, float*) [15]
+                0.10    0.00     100/200         set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
+                0.10    0.00     100/200         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [2]
+[6]     12.8    0.20    0.00     200         lin_solve(int, int, int, int, float*, float*, float, float) [6]
 -----------------------------------------------
-                0.05    0.00     100/400         dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [6]
-                0.16    0.00     300/400         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [3]
-[7]     13.6    0.21    0.00     400         advect(int, int, int, int, float*, float*, float*, float*, float*, float) [7]
+                                 100             set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
+                                 200             project(int, int, int, float*, float*, float*, float*, float*) <cycle 1> [4]
+                0.00    0.00       1/4101        _init [1]
+                0.04    0.75    4100/4101        vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [2]
+[7]      7.1    0.01    0.10    4301+100     set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
+                0.10    0.00     100/200         lin_solve(int, int, int, int, float*, float*, float, float) [6]
+                0.00    0.00     100/100         EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) [16]
+                0.00    0.00     100/100         free_data() [15]
+                0.00    0.00     100/100         dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [14]
+                                 100             project(int, int, int, float*, float*, float*, float*, float*) <cycle 1> [4]
+                                 100             set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
 -----------------------------------------------
-                0.00    0.00     100/2200        simulate(EventManager&, int) [2]
-                0.03    0.00    2100/2200        vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [3]
-[8]      1.9    0.03    0.00    2200         set_bnd(int, int, int, int, float*) [clone .constprop.0] [8]
+                0.00    0.00     400/6400        project(int, int, int, float*, float*, float*, float*, float*) <cycle 1> [4]
+                0.00    0.00    6000/6400        set_bnd(int, int, int, int, float*) [clone .constprop.3] [5]
+[10]     0.0    0.00    0.00    6400         set_bnd(int, int, int, int, float*) [clone .constprop.2] [10]
 -----------------------------------------------
-                0.00    0.00     400/6400        project(int, int, int, float*, float*, float*, float*, float*) [5]
-                0.01    0.00    6000/6400        lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0] [4]
-[9]      0.6    0.01    0.00    6400         set_bnd(int, int, int, int, float*) [clone .constprop.3] [9]
+                0.00    0.00     200/2200        project(int, int, int, float*, float*, float*, float*, float*) <cycle 1> [4]
+                0.00    0.00    2000/2200        vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [2]
+[11]     0.0    0.00    0.00    2200         set_bnd(int, int, int, int, float*) [clone .constprop.1] [11]
 -----------------------------------------------
-                0.00    0.00     200/2200        project(int, int, int, float*, float*, float*, float*, float*) [5]
-                0.01    0.00    2000/2200        vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [3]
-[10]     0.6    0.01    0.00    2200         set_bnd(int, int, int, int, float*) [clone .constprop.2] [10]
+                0.00    0.00     100/400         project(int, int, int, float*, float*, float*, float*, float*) <cycle 1> [4]
+                0.00    0.00     300/400         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [2]
+[12]     0.0    0.00    0.00     400         set_bnd(int, int, int, int, float*) [12]
 -----------------------------------------------
-                0.00    0.00     200/2200        project(int, int, int, float*, float*, float*, float*, float*) [5]
-                0.00    0.00    2000/2200        vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [3]
-[14]     0.0    0.00    0.00    2200         set_bnd(int, int, int, int, float*) [clone .constprop.1] [14]
+                0.00    0.00     100/400         project(int, int, int, float*, float*, float*, float*, float*) <cycle 1> [4]
+                0.00    0.00     300/400         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [2]
+[13]     0.0    0.00    0.00     400         lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0] [13]
 -----------------------------------------------
-                0.00    0.00     100/400         dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [6]
-                0.00    0.00     300/400         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [3]
-[15]     0.0    0.00    0.00     400         set_bnd(int, int, int, int, float*) [15]
+                0.00    0.00     100/100         set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
+[14]     0.0    0.00    0.00     100         dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [14]
 -----------------------------------------------
-                0.00    0.00     100/100         simulate(EventManager&, int) [2]
-[16]     0.0    0.00    0.00     100         apply_events(std::vector<Event, std::allocator<Event> > const&) [16]
+                0.00    0.00     100/100         set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
+[15]     0.0    0.00    0.00     100         free_data() [15]
 -----------------------------------------------
-                0.00    0.00     100/100         simulate(EventManager&, int) [2]
-[17]     0.0    0.00    0.00     100         EventManager::get_events_at_timestamp(int) const [17]
-                0.00    0.00      20/20          void std::vector<Event, std::allocator<Event> >::_M_realloc_append<Event const&>(Event const&) [18]
+                0.00    0.00     100/100         set_bnd(int, int, int, int, float*) [clone .constprop.0] <cycle 1> [7]
+[16]     0.0    0.00    0.00     100         EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) [16]
+                0.00    0.00      20/20          _fini [17]
 -----------------------------------------------
-                0.00    0.00      20/20          EventManager::get_events_at_timestamp(int) const [17]
-[18]     0.0    0.00    0.00      20         void std::vector<Event, std::allocator<Event> >::_M_realloc_append<Event const&>(Event const&) [18]
+                0.00    0.00      20/20          EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) [16]
+[17]     0.0    0.00    0.00      20         _fini [17]
 -----------------------------------------------
-                0.00    0.00       1/1           main [1]
-[19]     0.0    0.00    0.00       1         clear_data() [19]
+                0.00    0.00       1/1           main [9]
+[18]     0.0    0.00    0.00       1         clear_data() [18]
 -----------------------------------------------
-                0.00    0.00       1/1           main [1]
-[20]     0.0    0.00    0.00       1         allocate_data() [20]
+                0.00    0.00       1/1           _init [1]
+[19]     0.0    0.00    0.00       1         allocate_data() [19]
 -----------------------------------------------
-                0.00    0.00       1/1           main [1]
-[21]     0.0    0.00    0.00       1         free_data() [21]
------------------------------------------------
-                0.00    0.00       1/1           main [1]
-[22]     0.0    0.00    0.00       1         EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) [22]
+                0.00    0.00       1/1           _init [1]
+[20]     0.0    0.00    0.00       1         _start [20]
 -----------------------------------------------
 
  This table describes the call tree of the program, and was sorted by
@@ -243,9 +236,9 @@ notice and this notice are preserved.
 
 Index by function name
 
-  [19] clear_data()            [8] set_bnd(int, int, int, int, float*) [clone .constprop.0] [6] dens_step(int, int, int, float*, float*, float*, float*, float*, float, float)
-  [16] apply_events(std::vector<Event, std::allocator<Event> > const&) [14] set_bnd(int, int, int, int, float*) [clone .constprop.1] [21] free_data()
-  [20] allocate_data()        [10] set_bnd(int, int, int, int, float*) [clone .constprop.2] [4] lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0]
-   [7] advect(int, int, int, int, float*, float*, float*, float*, float*, float) [9] set_bnd(int, int, int, int, float*) [clone .constprop.3] [22] EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
-   [5] project(int, int, int, float*, float*, float*, float*, float*) [2] simulate(EventManager&, int) [17] EventManager::get_events_at_timestamp(int) const
-  [15] set_bnd(int, int, int, int, float*) [3] vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [18] void std::vector<Event, std::allocator<Event> >::_M_realloc_append<Event const&>(Event const&)
+  [18] clear_data()           [10] set_bnd(int, int, int, int, float*) [clone .constprop.2] [13] lin_solve(int, int, int, int, float*, float*, float, float) [clone .constprop.0]
+  [19] allocate_data()         [5] set_bnd(int, int, int, int, float*) [clone .constprop.3] [16] EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+   [4] project(int, int, int, float*, float*, float*, float*, float*) [2] vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [17] _fini
+  [12] set_bnd(int, int, int, int, float*) [14] dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [20] _start
+   [7] set_bnd(int, int, int, int, float*) [clone .constprop.0] [15] free_data() [3] <cycle 1>
+  [11] set_bnd(int, int, int, int, float*) [clone .constprop.1] [6] lin_solve(int, int, int, int, float*, float*, float, float)

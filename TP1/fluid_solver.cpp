@@ -7,19 +7,21 @@
 #define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define LINEARSOLVERTIMES 20
-#define size ((M + 2) * (N + 2) * (O + 2))
+#define val (M + 2)
+#define val2 (N + 2)
 
 int ix000, ix100, ix010, ix001;
 int ixm100, ixm00, ixm110, ixm101;
 int ix0n10, ix1n10, ix0n0, ix0n11;
 int ixm1n10, ixmn10, ixm1n0, ixm1n11;
 
-inline float clamp(float val, float minVal, float maxVal) {
-    return std::max(minVal, std::min(val, maxVal));
+inline float clamp(float value, float minVal, float maxVal) {
+    return std::max(minVal, std::min(value, maxVal));
 }
 
 // Add sources (density or velocity)
 void add_source(int M, int N, int O, float *x, float *s, float dt) {
+  int size = (M + 2) * (N + 2) * (O + 2);
   for (int i = 0; i < size; i++) {
     x[i] += dt * s[i];
   }
@@ -28,9 +30,6 @@ void add_source(int M, int N, int O, float *x, float *s, float dt) {
 // Set boundary conditions
 void set_bnd(int M, int N, int O, int b, float *x) {
   int i, j;
-  int val = M + 2;
-  int val2 = N + 2;
-
 
   auto neg_mask = (b == 3) ? -1.0F : 1.0F;
 
@@ -116,10 +115,8 @@ void set_bnd(int M, int N, int O, int b, float *x) {
 }
 
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
-    int blockSize = 8;  
+    int blockSize = 4;  
 
-    int val = M + 2;
-    int val2 = N + 2;
     float x_im1, x_ip1, x_jm1, x_jp1, x_km1, x_kp1;
     float div = 1/c;
 
@@ -132,21 +129,20 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                     // Processa um bloco de tamanho blockSize x blockSize x blockSize
                     for (int k = kb; k < std::min(kb + blockSize, O + 1); k++) {
                         for (int j = jb; j < std::min(jb + blockSize, N + 1); j++) {
+                            int idx = IX(ib, j, k);
                             for (int i = ib; i < std::min(ib + blockSize, M + 1); i++) {
-                                int idx = IX(i, j, k);
+                                //int idx = IX(i, j, k);
                                 
-                                // Atualiza os vizinhos de i
                                 x_im1 = x[idx - 1];
                                 x_ip1 = x[idx + 1];
                                 
-                                // Atualiza vizinhos de j e k
                                 x_jm1 = x[idx - 44];
                                 x_jp1 = x[idx + 44];
                                 x_km1 = x[idx - 1936];
                                 x_kp1 = x[idx + 1936];
 
-                                // Realiza o cálculo com os valores vizinhos já armazenados
                                 x[idx] = (x0[idx] + a * (x_im1 + x_ip1 + x_jm1 + x_jp1 + x_km1 + x_kp1)) * div;
+                                idx += 1;
                             }
                         }
                     }
@@ -261,11 +257,9 @@ void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float 
 
 void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
     float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
-    int val = M + 2;
-    int val2 = N + 2;
 
     // Loop bloqueado para melhorar localidade de cache
-    int blockSize = 8;  // Definir um tamanho de bloco apropriado (pode ser ajustado)
+    int blockSize = 4;  // Definir um tamanho de bloco apropriado (pode ser ajustado)
     
     for (int kb = 1; kb <= O; kb += blockSize) {
         for (int jb = 1; jb <= N; jb += blockSize) {
@@ -366,6 +360,65 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
 */
 // Projection step to ensure incompressibility (make the velocity field
 // divergence-free)
+
+void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *div) {
+  
+  int max = MAX(M, MAX(N, O));
+  float invMax = 1.0f / max;
+  int blockSize = 4;  // Tamanho do bloco arbitrário, pode ser ajustado para corresponder ao tamanho de cache.
+
+  // Loop Blocking para o cálculo de div e p
+  for (int kk = 1; kk <= O; kk += blockSize) {
+    for (int jj = 1; jj <= N; jj += blockSize) {
+      for (int ii = 1; ii <= M; ii += blockSize) {
+
+        for (int k = kk; k < kk + blockSize && k <= O; k++) {
+          for (int j = jj; j < jj + blockSize && j <= N; j++) {
+            int idx = IX(ii, j, k);
+
+            for (int i = ii; i < ii + blockSize && i <= M; i++) {
+              div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + 44] -
+                                   v[idx - 44] + w[idx + 1936] - w[idx - 1936])) * invMax;
+              p[idx] = 0;
+              idx+=1;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  set_bnd(M, N, O, 0, div);
+  set_bnd(M, N, O, 0, p);
+  lin_solve(M, N, O, 0, p, div, 1, 6);
+
+  // Loop Blocking para o ajuste de u, v e w
+  for (int kk = 1; kk <= O; kk += blockSize) {
+    for (int jj = 1; jj <= N; jj += blockSize) {
+      for (int ii = 1; ii <= M; ii += blockSize) {
+
+        for (int k = kk; k < kk + blockSize && k <= O; k++) {
+          for (int j = jj; j < jj + blockSize && j <= N; j++) {
+            int idx = IX(ii, j, k);
+
+            for (int i = ii; i < ii + blockSize && i <= M; i++) {
+              u[idx] -= 0.5f * (p[idx + 1] - p[idx - 1]);
+              v[idx] -= 0.5f * (p[idx + 44] - p[idx - 44]);
+              w[idx] -= 0.5f * (p[idx + 1936] - p[idx - 1936]);
+              idx+=1;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  set_bnd(M, N, O, 1, u);
+  set_bnd(M, N, O, 2, v);
+  set_bnd(M, N, O, 3, w);
+}
+
+/*
 void project(int M, int N, int O, float *u, float *v, float *w, float *p,float *div) {
 
   int val = M + 2;
@@ -375,11 +428,13 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p,float *
 
   for (int k = 1; k <= O; k++) {
     for (int j = 1; j <= N; j++) {
+      int idx = IX(1, j, k);
       for (int i = 1; i <= M; i++) {
-        int idx = IX(i, j, k);                      
+        //int idx = IX(i, j, k);                      
         div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + 44] -
                            v[idx - 44] + w[idx + 1936] - w[idx - 1936])) * invMax;
         p[idx] = 0;
+        idx += 1;
       }
     }
   }
@@ -391,11 +446,13 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p,float *
 
   for (int k = 1; k <= O; k++) {
     for (int j = 1; j <= N; j++) {
+      int idx = IX(1, j, k);
       for (int i = 1; i <= M; i++) {
-        int idx = IX(i, j, k);                      
+        //int idx = IX(i, j, k);                      
         u[idx] -= 0.5f * (p[idx + 1] - p[idx - 1]);
         v[idx] -= 0.5f * (p[idx + 44] - p[idx - 44]);
         w[idx] -= 0.5f * (p[idx + 1936] - p[idx - 1936]);
+        idx += 1;
       }
     }
   }
@@ -403,6 +460,7 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p,float *
   set_bnd(M, N, O, 2, v);
   set_bnd(M, N, O, 3, w);
 }
+*/
 
 // Step function for density
 void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt) {
@@ -416,9 +474,6 @@ void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, flo
 
 // Step function for velocity
 void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, float *v0, float *w0, float visc, float dt) {
-
-  int val = M + 2;
-  int val2 = N + 2;
 
   ix000 = IX(0, 0, 0);
   ix100 = IX(1, 0, 0);
