@@ -6,22 +6,22 @@
 #include <chrono>
 
 #define SIZE 42
-
-#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))
+#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k)) //Compute 1D index from 3D coordinates 
 
 // Globals for the grid size
 static int M = SIZE;
 static int N = SIZE;
 static int O = SIZE;
-static float dt = 0.1f;      // Time delta
-static float diff = 0.0001f; // Diffusion constant
-static float visc = 0.0001f; // Viscosity constant
 static int val = M + 2;
 static int val2 = N + 2;
 static int iX = M *0.5;
 static int jX = N *0.5;
 static int kX = O *0.5;
 static int index = IX(iX, jX, kX);
+static float dt = 0.1f;      // Time delta
+static float diff = 0.0001f; // Diffusion constant
+static float visc = 0.0001f; // Viscosity constant
+
 // Fluid simulation arrays
 static float *u, *v, *w, *u_prev, *v_prev, *w_prev;
 static float *dens, *dens_prev;
@@ -68,7 +68,6 @@ void free_data() {
 
 // Apply events (source or force) for the current timestep
 void apply_events(const std::vector<Event> &events) {
-
   for (const auto &event : events) {
     if (event.type == ADD_SOURCE) {
       // Apply density source at the center of the grid
@@ -109,19 +108,9 @@ void simulate(EventManager &eventManager, int timesteps) {
 
 int main() {
 
-  //auto start = std::chrono::high_resolution_clock::now();
-
   // Initialize EventManager
   EventManager eventManager;
   eventManager.read_events("events.txt");
-
-  //int val = M + 2;
-  //int val2 = N + 2;
-
-  //for(int i = 1; i < 200; i++){
-  //  std::cout << "IX(1,1," << i << ") : " << IX(1,1,i) << std::endl;
-  //  std::cout << "IX(1,2," << i << ") : " << IX(1,2,i) << std::endl;
-  //}
 
   // Get the total number of timesteps from the event file
   int timesteps = eventManager.get_total_timesteps();
@@ -141,14 +130,6 @@ int main() {
 
   // Free memory
   free_data();
-
-  //auto end = std::chrono::high_resolution_clock::now();
-  
-  // Calcula a duração em milissegundos
-  //std::chrono::duration<float, std::milli> duration = end - start;
-  //std::chrono::duration<float> duration2 = end - start;
-  //std::cout << "Tempo de execução: " << duration.count() << " ms" << std::endl;
-  //std::cout << "Tempo de execução: " << duration2.count() << " s" << std::endl;
 
   return 0;
 }

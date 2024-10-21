@@ -1,32 +1,32 @@
 CPP = g++ -Wall -Ofast -funroll-loops -ftree-vectorize -ffast-math -march=native -mavx -std=c++11 
 PROF_FLAGS = -pg
-SRCS = main.cpp fluid_solver.cpp EventManager.cpp
+SRCS = src/main.cpp src/fluid_solver.cpp src/EventManager.cpp
 BIN = bin/
 
 all:
-	$(CPP) $(SRCS) -o fluid_sim
+	$(CPP) $(SRCS) -o $(BIN)fluid_sim
 
 clean:
 	@echo Cleaning up...
-	@rm fluid_sim
+	@rm $(BIN)fluid_sim
 	@echo Done.
 
 prof:
-	$(CPP) $(CFLAGS) $(PROF_FLAGS) $(SRCS) -o fluid_sim
+	$(CPP) $(CFLAGS) $(PROF_FLAGS) $(SRCS) -o $(BIN)fluid_sim
 
 srun-prof: prof
-	srun --partition=cpar --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	srun --partition=cpar --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./$(BIN)fluid_sim
 
 run-prof: prof
-	./prof_md 
+	./$(BIN)fluid_sim 
 
 graph-prof: run-prof
-	gprof prof_md > main.gprof
+	gprof $(BIN)fluid_sim > main.gprof
 	./gprof2dot.py -o output.dot main.gprof
 	rm gmon.out
 	dot -Tpng -o output.png output.dot
 
 clean-prof:
 	@echo Cleaning up...
-	@rm -f prof_md gmon.out main.gprof output.dot output.png
+	@rm -f $(BIN)fluid_sim gmon.out main.gprof output.dot output.png
 	@echo Done.

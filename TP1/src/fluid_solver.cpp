@@ -3,18 +3,21 @@
 #include <algorithm>
 #include <iostream>
 
-#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))
-#define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}
-#define MAX(a, b) (((a) > (b)) ? (a) : (b))
-#define LINEARSOLVERTIMES 20
 #define val (M + 2)
 #define val2 (N + 2)
+#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1D index from 3D coordinates 
+#define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}            //Swap two pointers
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))                     //Get maximum between two values
+#define LINEARSOLVERTIMES 20                                    //Number of iterations for the linear solver
+
 
 int ix000, ix100, ix010, ix001;
 int ixm100, ixm00, ixm110, ixm101;
 int ix0n10, ix1n10, ix0n0, ix0n11;
 int ixm1n10, ixmn10, ixm1n0, ixm1n11;
 
+
+// Clamp value between a given minimum and maximum
 inline float clamp(float value, float minVal, float maxVal) {
     return std::max(minVal, std::min(value, maxVal));
 }
@@ -80,32 +83,6 @@ void set_bnd(int M, int N, int O, int b, float *x) {
       x[idx] = neg_mask * last_value; // Corrigido para o último índice
       //}
   }
-  // Set boundary on faces
-  //for (j = 1; j <= N; j++) {
-  //  for (i = 1; i <= M; i++) {
-  //    int idz0 = IX(i, j, 0);
-  //    int idz1 = IX(i, j, O + 1);
-  //    
-  //    x[idz0] = b == 3 ? -x[idz0 + 1936] : x[idz0 + 1936];
-  //    x[idz1] = b == 3 ? -x[idz1 - 1936] : x[idz1 - 1936];
-  //  }
-  //}
-  //for (j = 1; j <= N; j++) {
-  //  for (i = 1; i <= M; i++) {
-  //    int idx0 = IX(0, i, j);
-  //    int idx1 = IX(M+1, i, j);
-  //    x[idx0] = b == 1 ? -x[idx0 + 1] : x[idx0 + 1];
-  //    x[idx1] = b == 1 ? -x[idx1 - 1] : x[idx1 - 1];
-  //  }
-  //}
-  //for (j = 1; j <= N; j++) {
-  //  for (i = 1; i <= M; i++) {
-  //    int idy0 = IX(i, 0, j);
-  //    int idy1 = IX(i, N+1, j);
-  //    x[idy0] = b == 2 ? -x[idy0 + 44] : x[idy0 + 44];
-  //    x[idy1] = b == 2 ? -x[idy1 - 44] : x[idy1 - 44];
-  //  }
-  //}
 
   // Set corners
   x[ix000] = 0.33f * (x[ix100] + x[ix010] + x[ix001]);
@@ -114,6 +91,7 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   x[ixm1n10] = 0.33f * (x[ixmn10] + x[ixm1n0] + x[ixm1n11]);
 }
 
+// Linear solve for implicit methods (diffusion)
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
     int blockSize = 4;  
 
@@ -131,8 +109,6 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                         for (int j = jb; j < std::min(jb + blockSize, N + 1); j++) {
                             int idx = IX(ib, j, k);
                             for (int i = ib; i < std::min(ib + blockSize, M + 1); i++) {
-                                //int idx = IX(i, j, k);
-                                
                                 x_im1 = x[idx - 1];
                                 x_ip1 = x[idx + 1];
                                 
@@ -140,7 +116,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                                 x_jp1 = x[idx + 44];
                                 x_km1 = x[idx - 1936];
                                 x_kp1 = x[idx + 1936];
-
+                                // Realiza o cálculo com resultados armazenados temporariamente
                                 x[idx] = (x0[idx] + a * (x_im1 + x_ip1 + x_jm1 + x_jp1 + x_km1 + x_kp1)) * div;
                                 idx += 1;
                             }
@@ -154,99 +130,6 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
     }
 }
 
-/* Versão com menos tempo, mas mais Cache Misses, devido à ordem dos loops (MELHOR)
-
-    for (int l = 0; l < LINEARSOLVERTIMES; l++) {
-    for (int ib = 1; ib <= M; ib += blockSize) {
-        for (int jb = 1; jb <= N; jb += blockSize) {
-            for (int kb = 1; kb <= O; kb += blockSize) {
-                for (int i = ib; i < std::min(ib + blockSize, M + 1); i++) {
-                    for (int j = jb; j < std::min(jb + blockSize, N + 1); j++) {
-                        for (int k = kb; k < std::min(kb + blockSize, O + 1); k++) {
-                            int idx = IX(i, j, k);
-                            // Acesso contíguo aos elementos do array
-                            int idx_im1 = IX(i - 1, j, k);
-                            int idx_ip1 = IX(i + 1, j, k);
-                            int idx_jm1 = IX(i, j - 1, k);
-                            int idx_jp1 = IX(i, j + 1, k);
-                            int idx_km1 = IX(i, j, k - 1);
-                            int idx_kp1 = IX(i, j, k + 1);
-
-                            // Realiza o cálculo com resultados armazenados temporariamente
-                            x[idx] = (x0[idx] + a * (x[idx_im1] + x[idx_ip1] +
-                                                     x[idx_jm1] + x[idx_jp1] +
-                                                     x[idx_km1] + x[idx_kp1])) / c;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    set_bnd(M, N, O, b, x);
-}
-
-*/
-
-/*
-// Versão com menos Cache Misses, mas um pouco mais de tempo 
-
-    for (int l = 0; l < LINEARSOLVERTIMES; l++) {
-        for (int kb = 1; kb <= O; kb += blockSize) {
-            for (int jb = 1; jb <= N; jb += blockSize) {
-                for (int ib = 1; ib <= M; ib += blockSize) {
-                    
-                    // Processa um bloco de tamanho blockSize x blockSize x blockSize
-                    for (int k = kb; k < std::min(kb + blockSize, O + 1); k++) {
-                        for (int j = jb; j < std::min(jb + blockSize, N + 1); j++) {
-                            for (int i = ib; i < std::min(ib + blockSize, M + 1); i++) {
-                                int idx = IX(i, j, k);
-                                int idx_im1 = IX(i - 1, j, k);
-                                int idx_ip1 = IX(i + 1, j, k);
-                                int idx_jm1 = IX(i, j - 1, k);
-                                int idx_jp1 = IX(i, j + 1, k);
-                                int idx_km1 = IX(i, j, k - 1);
-                                int idx_kp1 = IX(i, j, k + 1);
-
-                                // Realiza o cálculo com resultados armazenados temporariamente
-                                x[idx] = (x0[idx] + a * (x[idx_im1] + x[idx_ip1] +
-                                                         x[idx_jm1] + x[idx_jp1] +
-                                                         x[idx_km1] + x[idx_kp1])) / c;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Aplica as condições de contorno após cada iteração
-        set_bnd(M, N, O, b, x);
-    }
-*/
-
-
-/* 
-// Linear solve for implicit methods (diffusion)
-void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,float c) {
-
-  int val = M + 2;
-  int val2 = N + 2;
-
-  for (int l = 0; l < LINEARSOLVERTIMES; l++) {
-    for (int k = 1; k <= O; k++) {
-      for (int j = 1; j <= N; j++) {
-        for (int i = 1; i <= M; i++) {
-          int idx = IX(i, j, k);                      
-          x[idx] = (x0[idx] + a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
-                              x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                              x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) / c;
-        }
-      }
-    }
-    set_bnd(M, N, O, b, x);
-  }
-}
-*/
-
 // Diffusion step (uses implicit method)
 void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
     int max = MAX(MAX(M, N), O);
@@ -254,7 +137,7 @@ void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float 
     lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
 }
 
-
+// Advection step (uses velocity field to move quantities)
 void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
     float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
 
@@ -318,49 +201,9 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
     set_bnd(M, N, O, b, d);
 }
 
-/*
-// Advection step (uses velocity field to move quantities)
-void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
-  
-  float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
-  int val = M + 2;
-  int val2 = N + 2;
 
-  for (int k = 1; k <= O; k++) {
-    for (int j = 1; j <= N; j++) {
-      for (int i = 1; i <= M; i++) {
-        int idx = IX(i, j, k);
-        float x = i - dtX * u[idx];
-        float y = j - dtY * v[idx];
-        float z = k - dtZ * w[idx];
-
-        // Clamp to grid boundaries
-        // DEVE DAR PARA MELHORAR ISTO 
-        x = clamp(x, 0.5f, M + 0.5f);
-        y = clamp(y, 0.5f, N + 0.5f);
-        z = clamp(z, 0.5f, O + 0.5f);
-
-        int i0 = (int)x, i1 = i0 + 1;
-        int j0 = (int)y, j1 = j0 + 1;
-        int k0 = (int)z, k1 = k0 + 1;
-
-        float s1 = x - i0, s0 = 1 - s1;
-        float t1 = y - j0, t0 = 1 - t1;
-        float u1 = z - k0, u0 = 1 - u1;
-
-        d[idx] = s0 * (t0 * (u0 * d0[IX(i0, j0, k0)] + u1 * d0[IX(i0, j0, k1)]) +
-                         t1 * (u0 * d0[IX(i0, j1, k0)] + u1 * d0[IX(i0, j1, k1)])) +
-                         s1 * (t0 * (u0 * d0[IX(i1, j0, k0)] + u1 * d0[IX(i1, j0, k1)]) +
-                         t1 * (u0 * d0[IX(i1, j1, k0)] + u1 * d0[IX(i1, j1, k1)]));
-      }
-    }
-  }
-  set_bnd(M, N, O, b, d);
-}
-*/
 // Projection step to ensure incompressibility (make the velocity field
 // divergence-free)
-
 void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *div) {
   
   int max = MAX(M, MAX(N, O));
@@ -418,50 +261,6 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
   set_bnd(M, N, O, 3, w);
 }
 
-/*
-void project(int M, int N, int O, float *u, float *v, float *w, float *p,float *div) {
-
-  int val = M + 2;
-  int val2 = N + 2;
-  int max = MAX(M, MAX(N, O));
-  float invMax = 1.0f / max;
-
-  for (int k = 1; k <= O; k++) {
-    for (int j = 1; j <= N; j++) {
-      int idx = IX(1, j, k);
-      for (int i = 1; i <= M; i++) {
-        //int idx = IX(i, j, k);                      
-        div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + 44] -
-                           v[idx - 44] + w[idx + 1936] - w[idx - 1936])) * invMax;
-        p[idx] = 0;
-        idx += 1;
-      }
-    }
-  }
-
-  set_bnd(M, N, O, 0, div);
-  set_bnd(M, N, O, 0, p);
-  lin_solve(M, N, O, 0, p, div, 1, 6);
-
-
-  for (int k = 1; k <= O; k++) {
-    for (int j = 1; j <= N; j++) {
-      int idx = IX(1, j, k);
-      for (int i = 1; i <= M; i++) {
-        //int idx = IX(i, j, k);                      
-        u[idx] -= 0.5f * (p[idx + 1] - p[idx - 1]);
-        v[idx] -= 0.5f * (p[idx + 44] - p[idx - 44]);
-        w[idx] -= 0.5f * (p[idx + 1936] - p[idx - 1936]);
-        idx += 1;
-      }
-    }
-  }
-  set_bnd(M, N, O, 1, u);
-  set_bnd(M, N, O, 2, v);
-  set_bnd(M, N, O, 3, w);
-}
-*/
-
 // Step function for density
 void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt) {
   
@@ -474,7 +273,7 @@ void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, flo
 
 // Step function for velocity
 void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, float *v0, float *w0, float visc, float dt) {
-
+  // Define global values
   ix000 = IX(0, 0, 0);
   ix100 = IX(1, 0, 0);
   ix010 = IX(0, 1, 0);
