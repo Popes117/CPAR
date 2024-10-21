@@ -32,7 +32,7 @@ void add_source(int M, int N, int O, float *x, float *s, float dt) {
 void set_bnd(int M, int N, int O, int b, float *x) {
   int i, j;
   int val = M + 2;
-  int val2 = (N + 2) * (O + 2);
+  int val2 = N + 2;
   auto neg_mask = (b == 3) ? -1.0F : 1.0F;
 
   // Set boundary on faces
@@ -94,7 +94,7 @@ void set_bnd(int M, int N, int O, int b, float *x) {
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
     int blockSize = 4;  
     int val = M + 2;
-    int val2 = (N + 2) * (O + 2);
+    int val2 = N + 2;
     float x_im1, x_ip1, x_jm1, x_jp1, x_km1, x_kp1;
     float div = 1/c;
 
@@ -141,7 +141,7 @@ void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float 
 void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
     float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
     int val = M + 2;
-    int val2 = (N + 2) * (O + 2);
+    int val2 = N + 2;
     // Loop bloqueado para melhorar localidade de cache
     int blockSize = 4;  // Definir um tamanho de bloco apropriado (pode ser ajustado)
     
@@ -207,7 +207,7 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
 // divergence-free)
 void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *div) {
   int val = M + 2;
-  int val2 = (N + 2) * (O + 2);
+  int val2 = N + 2; 
   int max = MAX(M, MAX(N, O));
   float invMax = 1.0f / max;
   int blockSize = 4;  // Tamanho do bloco arbitrário, pode ser ajustado para corresponder ao tamanho de cache.
@@ -277,7 +277,7 @@ void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, flo
 void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, float *v0, float *w0, float visc, float dt) {
   // Define global values
   int val = M + 2;
-  int val2 = (N + 2) * (O + 2);
+  int val2 = N + 2;
   
   ix000 = IX(0, 0, 0);
   ix100 = IX(1, 0, 0);
