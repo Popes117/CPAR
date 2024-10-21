@@ -3,12 +3,12 @@
 #include <algorithm>
 #include <iostream>
 
-#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1D index from 3D coordinates 
+#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1 dimensional (1D) index from 3D coordinates 
 #define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}            //Swap two pointers
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))                     //Get maximum between two values
 #define LINEARSOLVERTIMES 20                                    //Number of iterations for the linear solver
 
-
+//Global values to minimize the number of calculations of the index between steps
 int ix000, ix100, ix010, ix001;
 int ixm100, ixm00, ixm110, ixm101;
 int ix0n10, ix1n10, ix0n0, ix0n11;
@@ -49,10 +49,10 @@ void set_bnd(int M, int N, int O, int b, float *x) {
     }
   }
 
-  // Máscara para b == 1 no segundo loop (eixo x)
+  // Mask for b == 1 in the second loop (x-axis)
   neg_mask = (b == 1) ? -1.0F : 1.0F;
 
-  // Configurar os limites nas faces x
+  // Set boundaries on the x faces
   for (j = 1; j <= N; j++) {
       const auto index0 = IX(0, j, 0);
       const auto first_index = IX(1, j, 0);
@@ -62,25 +62,24 @@ void set_bnd(int M, int N, int O, int b, float *x) {
           const auto first_value = x[first_index + i];
           const auto last_value = x[last_index + i];
           x[index0 + i] = neg_mask * first_value;
-          x[idx] = neg_mask * last_value; // Corrigido para o último índice
+          x[idx] = neg_mask * last_value; 
       }
   }
 
-  // Máscara para b == 2 no terceiro loop (eixo y)
+  // Mask for b == 2 in the third loop (y-axis)
   neg_mask = (b == 2) ? -1.0F : 1.0F;
 
-  // Configurar os limites nas faces y
+  // Set boundaries on the y faces
   for (j = 1; j <= N; j++) {
       const auto index0 = IX(j, 0, 0);
       const auto first_index = IX(j, 1, 0);
       const auto last_index = IX(j, N, 0);
       int idx = IX(j, N + 1, 0);
-      //for (i = 1; i <= M; i++) {
       const auto first_value = x[first_index + j];
       const auto last_value = x[last_index + j];
       x[index0] = neg_mask * first_value;
-      x[idx] = neg_mask * last_value; // Corrigido para o último índice
-      //}
+      x[idx] = neg_mask * last_value; 
+      
   }
 
   // Set corners
@@ -98,13 +97,13 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
     float x_im1, x_ip1, x_jm1, x_jp1, x_km1, x_kp1;
     float div = 1/c;
 
-// Nova versão com menos repetições nos loops 
+    // New version with fewer repetitions in the loops
     for (int l = 0; l < LINEARSOLVERTIMES; l++) {
         for (int kb = 1; kb <= O; kb += blockSize) {
             for (int jb = 1; jb <= N; jb += blockSize) {
                 for (int ib = 1; ib <= M; ib += blockSize) {
                     
-                    // Processa um bloco de tamanho blockSize x blockSize x blockSize
+                    // Process a block of size blockSize x blockSize x blockSize
                     for (int k = kb; k < std::min(kb + blockSize, O + 1); k++) {
                         for (int j = jb; j < std::min(jb + blockSize, N + 1); j++) {
                             int idx = IX(ib, j, k);
@@ -116,7 +115,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                                 x_jp1 = x[idx + 44];
                                 x_km1 = x[idx - 1936];
                                 x_kp1 = x[idx + 1936];
-                                // Realiza o cálculo com resultados armazenados temporariamente
+                                // Calculates with temporarily stored results
                                 x[idx] = (x0[idx] + a * (x_im1 + x_ip1 + x_jm1 + x_jp1 + x_km1 + x_kp1)) * div;
                                 idx += 1;
                             }
@@ -125,7 +124,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                 }
             }
         }
-        // Aplica as condições de contorno após cada iteração
+        // Apply boundary conditions after each iteration
         set_bnd(M, N, O, b, x);
     }
 }
@@ -142,26 +141,24 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
     float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
     int val = M + 2;
     int val2 = N + 2;
-    // Loop bloqueado para melhorar localidade de cache
-    int blockSize = 4;  // Definir um tamanho de bloco apropriado (pode ser ajustado)
+    // Blocked loop to improve cache locality
+    int blockSize = 4;  // Can be adjusted
     
     for (int kb = 1; kb <= O; kb += blockSize) {
         for (int jb = 1; jb <= N; jb += blockSize) {
             for (int ib = 1; ib <= M; ib += blockSize) {
                 
                 for (int k = kb; k < std::min(kb + blockSize, O + 1); k++) {
-                    //int idx = IX(ib, jb, k);
+
                     for (int j = jb; j < std::min(jb + blockSize, N + 1); j++) {
                         int idx = IX(ib, j, k);
-                        //int idy = IX(ib, j, k);
-                        //std::cout << "idx: " << idx << " idy: " << idy << std::endl;
+
                         for (int i = ib; i < std::min(ib + blockSize, M + 1); i++) {
-                            //int idx = IX(i, j, k);
                             float x = i - dtX * u[idx];
                             float y = j - dtY * v[idx];
                             float z = k - dtZ * w[idx];
 
-                            // Clamping otimizado usando função inline
+                            // Optimized clamping using inline function
                             x = clamp(x, 0.5f, M + 0.5f);
                             y = clamp(y, 0.5f, N + 0.5f);
                             z = clamp(z, 0.5f, O + 0.5f);
@@ -174,7 +171,7 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
                             float t1 = y - j0, t0 = 1 - t1;
                             float u1 = z - k0, u0 = 1 - u1;
 
-                            // Acesso direto ao array para melhorar desempenho
+                            //Direct access to the array to better the performance
                             float d0_i0j0k0 = d0[IX(i0, j0, k0)];
                             float d0_i0j0k1 = d0[IX(i0, j0, k1)];
                             float d0_i0j1k0 = d0[IX(i0, j1, k0)];
@@ -184,21 +181,21 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
                             float d0_i1j1k0 = d0[IX(i1, j1, k0)];
                             float d0_i1j1k1 = d0[IX(i1, j1, k1)];
 
-                            // Computação da interpolação trilinear
+                            // Interpolate in 3D
                             d[idx] = s0 * (t0 * (u0 * d0_i0j0k0 + u1 * d0_i0j0k1) +
                                            t1 * (u0 * d0_i0j1k0 + u1 * d0_i0j1k1)) +
                                      s1 * (t0 * (u0 * d0_i1j0k0 + u1 * d0_i1j0k1) +
                                            t1 * (u0 * d0_i1j1k0 + u1 * d0_i1j1k1));
                             idx += 1;
                         }
-                        //idx += 36;
+
                     }
                 }
             }
         }
     }
 
-    // Aplicar as condições de contorno após o loop principal
+    // Apply boundary conditions
     set_bnd(M, N, O, b, d);
 }
 
@@ -212,7 +209,7 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
   float invMax = 1.0f / max;
   int blockSize = 4;  // Tamanho do bloco arbitrário, pode ser ajustado para corresponder ao tamanho de cache.
 
-  // Loop Blocking para o cálculo de div e p
+  // Loop Blocking for the calculation of div and p
   for (int kk = 1; kk <= O; kk += blockSize) {
     for (int jj = 1; jj <= N; jj += blockSize) {
       for (int ii = 1; ii <= M; ii += blockSize) {
@@ -237,7 +234,7 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
   set_bnd(M, N, O, 0, p);
   lin_solve(M, N, O, 0, p, div, 1, 6);
 
-  // Loop Blocking para o ajuste de u, v e w
+  // Loop Blocking to adjust u, v and w
   for (int kk = 1; kk <= O; kk += blockSize) {
     for (int jj = 1; jj <= N; jj += blockSize) {
       for (int ii = 1; ii <= M; ii += blockSize) {
