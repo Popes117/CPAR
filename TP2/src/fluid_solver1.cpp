@@ -3,8 +3,9 @@
 #include <algorithm>
 #include <iostream>
 
-//#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1 dimensional (1D) index from 3D coordinates -> versão primeira fase 
-#define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
+
+#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1 dimensional (1D) index from 3D coordinates -> versão primeira fase 
+//#define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
 #define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}            //Swap two pointers
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))                     //Get maximum between two values
 #define LINEARSOLVERTIMES 20                                    //Number of iterations for the linear solver
