@@ -1,6 +1,7 @@
 #Customs
 bin/*
 gmon.out
+gprof2dot.py
 
 # Prerequisites
 *.d
