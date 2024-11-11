@@ -1,4 +1,4 @@
-CPP = g++ -Wall -Ofast -g -fno-omit-frame-pointer -funroll-loops -ftree-vectorize -ffast-math -march=native -mavx -std=c++11 
+CPP = g++ -Wall -Ofast -funroll-loops -ftree-vectorize -ffast-math -march=native -mavx -std=c++11 
 PROF_FLAGS = -pg
 SRCS = src/main.cpp src/fluid_solver1.cpp src/EventManager.cpp
 BIN = bin/
@@ -8,7 +8,7 @@ all:
 
 clean:
 	@echo Cleaning up...
-	@rm $(BIN)fluid_sim
+	@rm fluid_sim
 	@echo Done.
 
 prof:
