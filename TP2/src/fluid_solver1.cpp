@@ -91,47 +91,35 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   x[ixm1n10] = 0.33f * (x[ixmn10] + x[ixm1n0] + x[ixm1n11]);
 }
 
-// red-black solver with convergence check
-void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
-    float tol = 1e-7, max_c, old_x, change;
-    int l = 0;
-    
-    do {
-        max_c = 0.0f;
-        for (int i = 1; i <= M; i++) {
-            for (int j = 1; j <= N; j++) {
-                 for (int k = 1 + (i+j)%2; k <= O; k+=2) {
-                    old_x = x[IX(i, j, k)];
-                    x[IX(i, j, k)] = (x0[IX(i, j, k)] +
-                                      a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
-                                           x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) /c;
-                    change = fabs(x[IX(i, j, k)] - old_x);
-                    if(change > max_c) max_c = change;
-                }
-            }
+
+/*
+// Linear solve for implicit methods (diffusion)
+void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,
+               float c) {
+  for (int l = 0; l < LINEARSOLVERTIMES; l++) {
+    for (int i = 1; i <= M; i++) {
+      for (int j = 1; j <= N; j++) {
+        for (int k = 1; k <= O; k++) {
+          x[IX(i, j, k)] = (x0[IX(i, j, k)] + a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
+                              x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
+                              x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) / c;
         }
-        
-        for (int i = 1; i <= M; i++) {
-            for (int j = 1; j <= N; j++) {
-                for (int k = 1 + (i+j+1)%2; k <= O; k+=2) {
-                    old_x = x[IX(i, j, k)];
-                    x[IX(i, j, k)] = (x0[IX(i, j, k)] +
-                                      a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
-                                           x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) /c;
-                    change = fabs(x[IX(i, j, k)] - old_x);
-                    if(change > max_c) max_c = change;
-                }
-            }
-        }
-        set_bnd(M, N, O, b, x);
-    } while (max_c > tol && ++l < 20);
+      }
+    }
+    set_bnd(M, N, O, b, x);
+  }
 }
+*/
 
-
-
-
+/**Trocas feitas na primeira fase:
+ * A fazer -> trocar ordem dos ciclos: i->k ; j->j ; k->i
+ * int val = M + 2;
+   int val2 = N + 2;
+   i++, j++, k++ -> x += blockSize
+   def idx, 
+**/
+/*
+// Linear solve for implicit methods (diffusion)
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
     int blockSize = 4;  
     int val = M + 2;
@@ -170,6 +158,52 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
         set_bnd(M, N, O, b, x);
     }
 }
+*/
+
+// red-black solver with convergence check
+
+//NOTAS: Alterações feitas vindas da segunda fase -> passar a divisão por c para multiplicação por inversa do div;
+//                                                    troca dos loops
+void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
+    float tol = 1e-7, max_c, old_x, change;
+    int l = 0;
+    int val = M + 2;
+    int val2 = N + 2;
+    //float div = 1/c; //Inverso de c
+    
+    do {
+        max_c = 0.0f;
+        for (int i = 1; i <= M; i++) {
+            for (int j = 1; j <= N; j++) {
+                 for (int k = 1 + (i+j)%2; k <= O; k+=2) {
+                    old_x = x[IX(i, j, k)];
+                    x[IX(i, j, k)] = (x0[IX(i, j, k)] +
+                                      a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
+                                           x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
+                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) / c;
+                    change = fabs(x[IX(i, j, k)] - old_x);
+                    if(change > max_c) max_c = change;
+                }
+            }
+        }
+        
+        for (int i = 1; i <= M; i++) {
+            for (int j = 1; j <= N; j++) {
+                for (int k = 1 + (i+j+1)%2; k <= O; k+=2) {
+                    old_x = x[IX(i, j, k)];
+                    x[IX(i, j, k)] = (x0[IX(i, j, k)] +
+                                      a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
+                                           x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
+                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) / c;
+                    change = fabs(x[IX(i, j, k)] - old_x);
+                    if(change > max_c) max_c = change;
+                }
+            }
+        }
+        set_bnd(M, N, O, b, x);
+    } while (max_c > tol && ++l < 20);
+}
+
 
 // Diffusion step (uses implicit method)
 void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
