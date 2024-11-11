@@ -169,34 +169,37 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
     int l = 0;
     int val = M + 2;
     int val2 = N + 2;
-    //float div = 1/c; //Inverso de c
+    float div = 1/c; //Inverso de c
     
     do {
         max_c = 0.0f;
-        for (int i = 1; i <= M; i++) {
+
+        for (int k = 1; k <= O; k++) {
             for (int j = 1; j <= N; j++) {
-                 for (int k = 1 + (i+j)%2; k <= O; k+=2) {
-                    old_x = x[IX(i, j, k)];
-                    x[IX(i, j, k)] = (x0[IX(i, j, k)] +
+                for (int i = 1 + (j + k) % 2; i <= M; i += 2) {
+                    int idx = IX(i, j, k);
+                    old_x = x[idx];
+                    x[idx] = (x0[idx] +
                                       a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
                                            x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) / c;
-                    change = fabs(x[IX(i, j, k)] - old_x);
-                    if(change > max_c) max_c = change;
+                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) * div;
+                    change = fabs(x[idx] - old_x);
+                    if (change > max_c) max_c = change;
                 }
             }
         }
         
-        for (int i = 1; i <= M; i++) {
+        for (int k = 1; k <= O; k++) {
             for (int j = 1; j <= N; j++) {
-                for (int k = 1 + (i+j+1)%2; k <= O; k+=2) {
-                    old_x = x[IX(i, j, k)];
-                    x[IX(i, j, k)] = (x0[IX(i, j, k)] +
+                for (int i = 1 + (j + k + 1) % 2; i <= M; i += 2) {
+                    int idx = IX(i, j, k);
+                    old_x = x[idx];
+                    x[idx] = (x0[idx] +
                                       a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
                                            x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) / c;
-                    change = fabs(x[IX(i, j, k)] - old_x);
-                    if(change > max_c) max_c = change;
+                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) * div;
+                    change = fabs(x[idx] - old_x);
+                    if (change > max_c) max_c = change;
                 }
             }
         }
