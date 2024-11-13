@@ -298,8 +298,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
             int idx = IX(ii, j, k);
 
             for (int i = ii; i < ii + blockSize && i <= M; i++) {
-              div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + 44] -
-                                   v[idx - 44] + w[idx + 1936] - w[idx - 1936])) * invMax;
+              div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + 86] -
+                                   v[idx - 86] + w[idx + 7396] - w[idx - 7396])) * invMax;
               p[idx] = 0;
               idx+=1;
             }
@@ -324,8 +324,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
 
             for (int i = ii; i < ii + blockSize && i <= M; i++) {
               u[idx] -= 0.5f * (p[idx + 1] - p[idx - 1]);
-              v[idx] -= 0.5f * (p[idx + 44] - p[idx - 44]);
-              w[idx] -= 0.5f * (p[idx + 1936] - p[idx - 1936]);
+              v[idx] -= 0.5f * (p[idx + 86] - p[idx - 86]);
+              w[idx] -= 0.5f * (p[idx + 7396] - p[idx - 7396]);
               idx+=1;
             }
           }
