@@ -1,4 +1,4 @@
-CPP = g++ -Wall -Ofast -funroll-loops -ftree-vectorize -ffast-math -march=native -mavx -std=c++11 
+CPP = g++ -Wall -Ofast -funroll-loops -ftree-vectorize -ffast-math -march=native -fopenmp -mavx -std=c++11 
 PROF_FLAGS = -pg
 SRCS = src/main.cpp src/fluid_solver1.cpp src/EventManager.cpp
 BIN = bin/

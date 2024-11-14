@@ -40,5 +40,23 @@ Total density after 100 timesteps: 143374
 
            14.5642 +- 0.0260 seconds time elapsed  ( +-  0.18% )
 
+Mudança de valores no acesso a arrays, comparado aos valores utilizados na fase anterior, corrigindo assim o valor resultante 
 
+Total density after 100 timesteps: 140881
+Total density after 100 timesteps: 140881
+Total density after 100 timesteps: 140881
 
+ Performance counter stats for './fluid_sim' (3 runs):
+
+    82,455,362,634      inst_retired.any          # 82455362634.3 Instructions      
+                                                  #      0.6 CPI                      ( +-  0.01% )  (62.50%)
+    45,393,621,138      cycles                                                        ( +-  1.81% )  (62.50%)
+    82,485,603,860      inst_retired.any                                              ( +-  0.02% )  (62.50%)
+         1,815,199      branch-misses                                                 ( +-  0.75% )  (62.50%)
+    30,333,426,279      L1-dcache-loads                                               ( +-  0.05% )  (62.50%)
+     1,902,955,855      L1-dcache-load-misses     #    6.27% of all L1-dcache hits    ( +-  0.09% )  (25.00%)
+    45,437,954,348      cycles                                                        ( +-  1.81% )  (37.50%)
+                 0      mem-loads                                                     (37.50%)
+     4,627,234,749      mem-stores                                                    ( +-  0.19% )  (49.99%)
+
+            13.931 +- 0.223 seconds time elapsed  ( +-  1.60% )

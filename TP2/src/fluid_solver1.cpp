@@ -174,36 +174,41 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
     do {
         max_c = 0.0f;
 
+        // Primeiro conjunto de índices (paridade baseada em (j + k) % 2)
+        #pragma omp parallel for reduction(max:max_c) collapse(2)
         for (int k = 1; k <= O; k++) {
             for (int j = 1; j <= N; j++) {
                 for (int i = 1 + (j + k) % 2; i <= M; i += 2) {
                     int idx = IX(i, j, k);
                     old_x = x[idx];
                     x[idx] = (x0[idx] +
-                                      a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
-                                           x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) * div;
+                              a * (x[idx - 1] + x[idx + 1] +
+                                   x[idx - 86] + x[idx + 86] +
+                                   x[idx - 7396] + x[idx + 7396])) * div;
                     change = fabs(x[idx] - old_x);
                     if (change > max_c) max_c = change;
                 }
             }
         }
-        
+
+        // Segundo conjunto de índices (paridade invertida)
+        #pragma omp parallel for reduction(max:max_c) collapse(2)
         for (int k = 1; k <= O; k++) {
             for (int j = 1; j <= N; j++) {
                 for (int i = 1 + (j + k + 1) % 2; i <= M; i += 2) {
                     int idx = IX(i, j, k);
                     old_x = x[idx];
                     x[idx] = (x0[idx] +
-                                      a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
-                                           x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                                           x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) * div;
+                              a * (x[idx - 1] + x[idx + 1] +
+                                   x[idx - 86] + x[idx + 86] +
+                                   x[idx - 7396] + x[idx + 7396])) * div;
                     change = fabs(x[idx] - old_x);
                     if (change > max_c) max_c = change;
                 }
             }
         }
-        set_bnd(M, N, O, b, x);
+
+        set_bnd(M, N, O, b, x);  // Aplicação de condições de fronteira
     } while (max_c > tol && ++l < 20);
 }
 
