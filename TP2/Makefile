@@ -27,6 +27,20 @@ runclus: all
 runclus2 : all 
 	sbatch --partition=day --nodelist=compute-134-116 --cpus-per-task=24 run.sh
 
+runclus3: all
+	export OMP_NUM_THREADS=2
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=2 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	export OMP_NUM_THREADS=4
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=4 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	export OMP_NUM_THREADS=8
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=8 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	export OMP_NUM_THREADS=16
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=16 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	export OMP_NUM_THREADS=32
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=32 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	export OMP_NUM_THREADS=48
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=48 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+
 run: all
 	OMP_NUM_THREADS=2
 	perf stat -d ./fluid_sim
