@@ -2,7 +2,7 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
-
+#include <omp.h>
 
 #define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1 dimensional (1D) index from 3D coordinates -> versão primeira fase 
 //#define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
@@ -25,6 +25,7 @@ inline float clamp(float value, float minVal, float maxVal) {
 // Add sources (density or velocity)
 void add_source(int M, int N, int O, float *x, float *s, float dt) {
   int size = (M + 2) * (N + 2) * (O + 2);
+  //#pragma omp parallel for
   for (int i = 0; i < size; i++) {
     x[i] += dt * s[i];
   }
@@ -38,7 +39,8 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   auto neg_mask = (b == 3) ? -1.0F : 1.0F;
 
   // Set boundary on faces
-  for (j = 1; j <= N; j++) {
+  //#pragma omp parallel for
+  for (j = 1; j <= N; j++) { 
     const auto index = IX(0, j, 0);
     const auto first_index = IX(0, j, 1);
     const auto last_index = IX(0, j, O);
@@ -55,6 +57,7 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   neg_mask = (b == 1) ? -1.0F : 1.0F;
 
   // Set boundaries on the x faces
+  //#pragma omp parallel for
   for (j = 1; j <= N; j++) {
       const auto index0 = IX(0, j, 0);
       const auto first_index = IX(1, j, 0);
@@ -72,6 +75,7 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   neg_mask = (b == 2) ? -1.0F : 1.0F;
 
   // Set boundaries on the y faces
+  //#pragma omp parallel for
   for (j = 1; j <= N; j++) {
       const auto index0 = IX(j, 0, 0);
       const auto first_index = IX(j, 1, 0);
@@ -89,9 +93,8 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   x[ixm100] = 0.33f * (x[ixm00] + x[ixm110] + x[ixm101]);
   x[ix0n10] = 0.33f * (x[ix1n10] + x[ix0n0] + x[ix0n11]);
   x[ixm1n10] = 0.33f * (x[ixmn10] + x[ixm1n0] + x[ixm1n11]);
+  
 }
-
-
 /*
 // Linear solve for implicit methods (diffusion)
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,
@@ -165,7 +168,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
 //NOTAS: Alterações feitas vindas da segunda fase -> passar a divisão por c para multiplicação por inversa do div;
 //                                                    troca dos loops
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
-    float tol = 1e-7, max_c, old_x, change;
+    float tol = 1e-7, max_c;
     int l = 0;
     int val = M + 2;
     int val2 = N + 2;
@@ -173,41 +176,43 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
     
     do {
         max_c = 0.0f;
+        #pragma omp parallel 
+        {
+          // Primeiro conjunto de índices (paridade baseada em (j + k) % 2)
+          #pragma omp for collapse(2) reduction(max:max_c)
+          for (int k = 1; k <= O; k++) {
+              for (int j = 1; j <= N; j++) {
+                  for (int i = 1 + (j + k) % 2; i <= M; i += 2) {
+                      int idx = IX(i, j, k);
+                      float old_x = x[idx];
+                      x[idx] = (x0[idx] +
+                                a * (x[idx - 1] + x[idx + 1] +
+                                     x[idx - 86] + x[idx + 86] +
+                                     x[idx - 7396] + x[idx + 7396])) * div;
+                      float change = fabs(x[idx] - old_x);
+                      if (change > max_c) max_c = change;
+                  }
+              }
+          }
 
-        // Primeiro conjunto de índices (paridade baseada em (j + k) % 2)
-        #pragma omp parallel for reduction(max:max_c) collapse(2)
-        for (int k = 1; k <= O; k++) {
-            for (int j = 1; j <= N; j++) {
-                for (int i = 1 + (j + k) % 2; i <= M; i += 2) {
-                    int idx = IX(i, j, k);
-                    old_x = x[idx];
-                    x[idx] = (x0[idx] +
-                              a * (x[idx - 1] + x[idx + 1] +
-                                   x[idx - 86] + x[idx + 86] +
-                                   x[idx - 7396] + x[idx + 7396])) * div;
-                    change = fabs(x[idx] - old_x);
-                    if (change > max_c) max_c = change;
-                }
-            }
+          // Segundo conjunto de índices (paridade invertida)
+          #pragma omp for collapse(2) reduction(max:max_c)
+          for (int k = 1; k <= O; k++) {
+              for (int j = 1; j <= N; j++) {
+                  for (int i = 1 + (j + k + 1) % 2; i <= M; i += 2) {
+                      int idx = IX(i, j, k);
+                      float old_x = x[idx];
+                      x[idx] = (x0[idx] +
+                                a * (x[idx - 1] + x[idx + 1] +
+                                     x[idx - 86] + x[idx + 86] +
+                                     x[idx - 7396] + x[idx + 7396])) * div;
+                      float change = fabs(x[idx] - old_x);
+                      if (change > max_c) max_c = change;
+                  }
+              }
+          }
+
         }
-
-        // Segundo conjunto de índices (paridade invertida)
-        #pragma omp parallel for reduction(max:max_c) collapse(2)
-        for (int k = 1; k <= O; k++) {
-            for (int j = 1; j <= N; j++) {
-                for (int i = 1 + (j + k + 1) % 2; i <= M; i += 2) {
-                    int idx = IX(i, j, k);
-                    old_x = x[idx];
-                    x[idx] = (x0[idx] +
-                              a * (x[idx - 1] + x[idx + 1] +
-                                   x[idx - 86] + x[idx + 86] +
-                                   x[idx - 7396] + x[idx + 7396])) * div;
-                    change = fabs(x[idx] - old_x);
-                    if (change > max_c) max_c = change;
-                }
-            }
-        }
-
         set_bnd(M, N, O, b, x);  // Aplicação de condições de fronteira
     } while (max_c > tol && ++l < 20);
 }
@@ -225,128 +230,103 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
     float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
     int val = M + 2;
     int val2 = N + 2;
-    // Blocked loop to improve cache locality
-    int blockSize = 4;  // Can be adjusted
+
+    #pragma omp parallel
+    {
+      #pragma omp for collapse(3)
+      for (int k = 1; k <= O; k++) {
+          for (int j = 1; j <= N; j++) {
+              for (int i = 1; i <= M; i++) {
+                  int idx = IX(i, j, k);
+
+                  float x = i - dtX * u[idx];
+                  float y = j - dtY * v[idx];
+                  float z = k - dtZ * w[idx];
+
+                  // Clamping otimizado utilizando função inline
+                  x = clamp(x, 0.5f, M + 0.5f);
+                  y = clamp(y, 0.5f, N + 0.5f);
+                  z = clamp(z, 0.5f, O + 0.5f);
+
+                  int i0 = (int)x, i1 = i0 + 1;
+                  int j0 = (int)y, j1 = j0 + 1;
+                  int k0 = (int)z, k1 = k0 + 1;
+
+                  float s1 = x - i0, s0 = 1 - s1;
+                  float t1 = y - j0, t0 = 1 - t1;
+                  float u1 = z - k0, u0 = 1 - u1;
+
+                  // Acesso direto aos elementos do array para melhorar o desempenho
+                  float d0_i0j0k0 = d0[IX(i0, j0, k0)];
+                  float d0_i0j0k1 = d0[IX(i0, j0, k1)];
+                  float d0_i0j1k0 = d0[IX(i0, j1, k0)];
+                  float d0_i0j1k1 = d0[IX(i0, j1, k1)];
+                  float d0_i1j0k0 = d0[IX(i1, j0, k0)];
+                  float d0_i1j0k1 = d0[IX(i1, j0, k1)];
+                  float d0_i1j1k0 = d0[IX(i1, j1, k0)];
+                  float d0_i1j1k1 = d0[IX(i1, j1, k1)];
+
+                  // Interpolação 3D
+                  d[idx] = s0 * (t0 * (u0 * d0_i0j0k0 + u1 * d0_i0j0k1) +
+                                 t1 * (u0 * d0_i0j1k0 + u1 * d0_i0j1k1)) +
+                           s1 * (t0 * (u0 * d0_i1j0k0 + u1 * d0_i1j0k1) +
+                                 t1 * (u0 * d0_i1j1k0 + u1 * d0_i1j1k1));
+              }
+          }
+      }
     
-    for (int kb = 1; kb <= O; kb += blockSize) {
-        for (int jb = 1; jb <= N; jb += blockSize) {
-            for (int ib = 1; ib <= M; ib += blockSize) {
-                
-                for (int k = kb; k < std::min(kb + blockSize, O + 1); k++) {
-
-                    for (int j = jb; j < std::min(jb + blockSize, N + 1); j++) {
-                        int idx = IX(ib, j, k);
-
-                        for (int i = ib; i < std::min(ib + blockSize, M + 1); i++) {
-                            float x = i - dtX * u[idx];
-                            float y = j - dtY * v[idx];
-                            float z = k - dtZ * w[idx];
-
-                            // Optimized clamping using inline function
-                            x = clamp(x, 0.5f, M + 0.5f);
-                            y = clamp(y, 0.5f, N + 0.5f);
-                            z = clamp(z, 0.5f, O + 0.5f);
-
-                            int i0 = (int)x, i1 = i0 + 1;
-                            int j0 = (int)y, j1 = j0 + 1;
-                            int k0 = (int)z, k1 = k0 + 1;
-
-                            float s1 = x - i0, s0 = 1 - s1;
-                            float t1 = y - j0, t0 = 1 - t1;
-                            float u1 = z - k0, u0 = 1 - u1;
-
-                            //Direct access to the array to better the performance
-                            float d0_i0j0k0 = d0[IX(i0, j0, k0)];
-                            float d0_i0j0k1 = d0[IX(i0, j0, k1)];
-                            float d0_i0j1k0 = d0[IX(i0, j1, k0)];
-                            float d0_i0j1k1 = d0[IX(i0, j1, k1)];
-                            float d0_i1j0k0 = d0[IX(i1, j0, k0)];
-                            float d0_i1j0k1 = d0[IX(i1, j0, k1)];
-                            float d0_i1j1k0 = d0[IX(i1, j1, k0)];
-                            float d0_i1j1k1 = d0[IX(i1, j1, k1)];
-
-                            // Interpolate in 3D
-                            d[idx] = s0 * (t0 * (u0 * d0_i0j0k0 + u1 * d0_i0j0k1) +
-                                           t1 * (u0 * d0_i0j1k0 + u1 * d0_i0j1k1)) +
-                                     s1 * (t0 * (u0 * d0_i1j0k0 + u1 * d0_i1j0k1) +
-                                           t1 * (u0 * d0_i1j1k0 + u1 * d0_i1j1k1));
-                            idx += 1;
-                        }
-
-                    }
-                }
-            }
-        }
     }
-
-    // Apply boundary conditions
     set_bnd(M, N, O, b, d);
 }
 
-
-// Projection step to ensure incompressibility (make the velocity field
-// divergence-free)
 void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *div) {
-  int val = M + 2;
-  int val2 = N + 2; 
-  int max = MAX(M, MAX(N, O));
-  float invMax = 1.0f / max;
-  int blockSize = 4;  // Tamanho do bloco arbitrário, pode ser ajustado para corresponder ao tamanho de cache.
+    int val = M + 2;
+    int val2 = N + 2; 
+    int max = MAX(M, MAX(N, O));
+    float invMax = 1.0f / max;
 
-  // Loop Blocking for the calculation of div and p
-  for (int kk = 1; kk <= O; kk += blockSize) {
-    for (int jj = 1; jj <= N; jj += blockSize) {
-      for (int ii = 1; ii <= M; ii += blockSize) {
+    #pragma omp parallel for collapse(3)
+    for (int k = 1; k <= O; k++) {
+      for (int j = 1; j <= N; j++) {
+        for (int i = 1; i <= M; i++) {
+          int idx = IX(i, j, k);
 
-        for (int k = kk; k < kk + blockSize && k <= O; k++) {
-          for (int j = jj; j < jj + blockSize && j <= N; j++) {
-            int idx = IX(ii, j, k);
-
-            for (int i = ii; i < ii + blockSize && i <= M; i++) {
-              div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + 86] -
-                                   v[idx - 86] + w[idx + 7396] - w[idx - 7396])) * invMax;
-              p[idx] = 0;
-              idx+=1;
-            }
-          }
+          div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + 86] -
+                               v[idx - 86] + w[idx + 7396] - w[idx - 7396])) * invMax;
+          p[idx] = 0;
         }
       }
     }
-  }
 
-  set_bnd(M, N, O, 0, div);
-  set_bnd(M, N, O, 0, p);
-  lin_solve(M, N, O, 0, p, div, 1, 6);
+    set_bnd(M, N, O, 0, div);
+    set_bnd(M, N, O, 0, p);
+    lin_solve(M, N, O, 0, p, div, 1, 6);
 
-  // Loop Blocking to adjust u, v and w
-  for (int kk = 1; kk <= O; kk += blockSize) {
-    for (int jj = 1; jj <= N; jj += blockSize) {
-      for (int ii = 1; ii <= M; ii += blockSize) {
+    #pragma omp parallel for collapse(3) 
+    // Ajuste de u, v e w sem loop blocking
+    for (int k = 1; k <= O; k++) {
+      for (int j = 1; j <= N; j++) {
+        for (int i = 1; i <= M; i++) {
+          int idx = IX(i, j, k);
 
-        for (int k = kk; k < kk + blockSize && k <= O; k++) {
-          for (int j = jj; j < jj + blockSize && j <= N; j++) {
-            int idx = IX(ii, j, k);
-
-            for (int i = ii; i < ii + blockSize && i <= M; i++) {
-              u[idx] -= 0.5f * (p[idx + 1] - p[idx - 1]);
-              v[idx] -= 0.5f * (p[idx + 86] - p[idx - 86]);
-              w[idx] -= 0.5f * (p[idx + 7396] - p[idx - 7396]);
-              idx+=1;
-            }
-          }
+          u[idx] -= 0.5f * (p[idx + 1] - p[idx - 1]);
+          v[idx] -= 0.5f * (p[idx + 86] - p[idx - 86]);
+          w[idx] -= 0.5f * (p[idx + 7396] - p[idx - 7396]);
         }
       }
     }
-  }
 
-  set_bnd(M, N, O, 1, u);
-  set_bnd(M, N, O, 2, v);
-  set_bnd(M, N, O, 3, w);
+    set_bnd(M, N, O, 1, u);
+    set_bnd(M, N, O, 2, v);
+    set_bnd(M, N, O, 3, w);
+  
 }
+
+#if 1
 
 // Step function for density
 void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt) {
-  
+
   add_source(M, N, O, x, x0, dt);
   SWAP(x0, x);
   diffuse(M, N, O, 0, x, x0, diff, dt);
@@ -395,3 +375,124 @@ void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, floa
   advect(M, N, O, 3, w, w0, u0, v0, w0, dt);
   project(M, N, O, u, v, w, u0, v0);
 }
+
+#else 
+
+void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt) {
+  
+  #pragma omp parallel
+  {
+    #pragma omp single
+    add_source(M, N, O, x, x0, dt); // Deve ser thread-safe
+  }
+
+  SWAP(x0, x);
+
+  #pragma omp parallel
+  {
+    #pragma omp single
+    diffuse(M, N, O, 0, x, x0, diff, dt); // Assumindo que esta função é paralela internamente
+  }
+  SWAP(x0, x);
+
+  #pragma omp parallel
+  {
+    #pragma omp single
+    advect(M, N, O, 0, x, x0, u, v, w, dt); // Assumindo que esta função também é paralela
+  }
+}
+
+void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, float *v0, float *w0, float visc, float dt) {
+  // Inicialização das bordas (não paralelizável, pois são valores únicos)
+  int val = M + 2;
+  int val2 = N + 2;
+
+  ix000 = IX(0, 0, 0);
+  ix100 = IX(1, 0, 0);
+  ix010 = IX(0, 1, 0);
+  ix001 = IX(0, 0, 1);
+  ixm100 = IX(M + 1, 0, 0);
+  ixm00 = IX(M, 0, 0);
+  ixm110 = IX(M + 1, 1, 0);
+  ixm101 = IX(M + 1, 0, 1);
+  ix0n10 = IX(0, N + 1, 0);
+  ix1n10 = IX(1, N + 1, 0);
+  ix0n0 = IX(0, N, 0);
+  ix0n11 = IX(0, N + 1, 1);
+  ixm1n10 = IX(M + 1, N, 0);
+  ixmn10 = IX(M, N + 1, 0);
+  ixm1n0 = IX(M + 1, N, 0);
+  ixm1n11 = IX(M + 1, N + 1, 1);
+
+  add_source(M, N, O, u, u0, dt);
+  add_source(M, N, O, v, v0, dt);
+  add_source(M, N, O, w, w0, dt);
+
+  //#pragma omp parallel
+  //{
+  //  #pragma omp single
+  //  add_source(M, N, O, u, u0, dt);
+  //  #pragma omp single
+  //  add_source(M, N, O, v, v0, dt);
+  //  #pragma omp single
+  //  add_source(M, N, O, w, w0, dt);
+  //}
+
+  SWAP(u0, u);
+
+  //#pragma omp parallel
+  //{
+  //  #pragma omp single
+    diffuse(M, N, O, 1, u, u0, visc, dt);
+  //}
+
+  SWAP(v0, v);
+
+
+
+  //#pragma omp parallel
+  //{
+  //  #pragma omp single
+    diffuse(M, N, O, 2, v, v0, visc, dt);
+  //}
+
+  SWAP(w0, w);
+
+  //#pragma omp parallel
+  //{
+  //  #pragma omp single
+    diffuse(M, N, O, 3, w, w0, visc, dt);
+  //}
+
+  #pragma omp parallel
+  {
+    #pragma omp single
+    project(M, N, O, u, v, w, u0, v0);
+  }
+
+  SWAP(u0, u);
+  SWAP(v0, v);
+  SWAP(w0, w);
+
+  #pragma omp parallel
+  {
+    #pragma omp single
+    advect(M, N, O, 1, u, u0, u0, v0, w0, dt);
+    #pragma omp single
+    advect(M, N, O, 2, v, v0, u0, v0, w0, dt);
+    #pragma omp single
+    advect(M, N, O, 3, w, w0, u0, v0, w0, dt);
+  }
+
+  #pragma omp parallel
+  {
+    #pragma omp single
+    project(M, N, O, u, v, w, u0, v0);
+  }
+
+}
+
+#endif
+
+
+
