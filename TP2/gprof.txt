@@ -3,19 +3,18 @@ Flat profile:
 Each sample counts as 0.01 seconds.
   %   cumulative   self              self     total           
  time   seconds   seconds    calls   s/call   s/call  name    
- 44.74      3.01     3.01      400     0.01     0.01  set_bnd(int, int, int, int, float*)
- 36.86      5.49     2.48     5095     0.00     0.00  std::ctype<char>::do_widen(char) const
- 10.26      6.18     0.69                             diffuse(int, int, int, int, float*, float*, float, float)
-  4.46      6.48     0.30      100     0.00     0.00  dens_step(int, int, int, float*, float*, float*, float*, float*, float, float)
-  3.42      6.71     0.23      100     0.00     0.01  vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float)
-  0.15      6.72     0.01      200     0.00     0.00  lin_solve(int, int, int, int, float*, float*, float, float)
-  0.15      6.73     0.01                             add_source(int, int, int, float*, float*, float)
-  0.00      6.73     0.00      101     0.00     0.00  apply_events(std::vector<Event, std::allocator<Event> > const&)
-  0.00      6.73     0.00      100     0.00     0.03  EventManager::get_events_at_timestamp(int) const
+ 92.15      6.20     6.20     3374     0.00     0.00  std::ctype<char>::do_widen(char) const
+  4.31      6.49     0.29                             add_source(int, int, int, float*, float*, float)
+  3.42      6.72     0.23                             dens_step(int, int, int, float*, float*, float*, float*, float*, float, float)
+  0.15      6.73     0.01                             diffuse(int, int, int, int, float*, float*, float, float)
+  0.00      6.73     0.00      101     0.00     0.04  vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float)
+  0.00      6.73     0.00      100     0.00     0.00  apply_events(std::vector<Event, std::allocator<Event> > const&)
+  0.00      6.73     0.00      100     0.00     0.01  project(int, int, int, float*, float*, float*, float*, float*)
+  0.00      6.73     0.00      100     0.00     0.00  lin_solve(int, int, int, int, float*, float*, float, float)
   0.00      6.73     0.00        1     0.00     0.00  clear_data()
   0.00      6.73     0.00        1     0.00     0.00  allocate_data()
-  0.00      6.73     0.00        1     0.00     2.96  simulate(EventManager&, int)
-  0.00      6.73     0.00        1     0.00     0.00  EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+  0.00      6.73     0.00        1     0.00     5.41  simulate(EventManager&, int)
+  0.00      6.73     0.00        1     0.00     0.00  free_data()
 
  %         the percentage of the total running time of the
 time       program used by this function.
@@ -56,80 +55,72 @@ notice and this notice are preserved.
 granularity: each sample hit covers 2 byte(s) for 0.15% of 6.73 seconds
 
 index % time    self  children    called     name
-[1]     56.0    3.01    0.76    2975+2320    <cycle 1 as a whole> [1]
-                2.48    0.01    5095+100         std::ctype<char>::do_widen(char) const <cycle 1> [7]
-                0.23    0.75     100             vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) <cycle 1> [8]
-                0.30    0.00     100             dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) <cycle 1> [10]
+[1]     92.1    6.20    0.00    2974+500     <cycle 1 as a whole> [1]
+                6.20    0.00    3374+2421        std::ctype<char>::do_widen(char) const <cycle 1> [2]
+                0.00    0.00     100             lin_solve(int, int, int, int, float*, float*, float, float) <cycle 1> [13]
+-----------------------------------------------
+                                2421             std::ctype<char>::do_widen(char) const <cycle 1> [2]
+                                 400             lin_solve(int, int, int, int, float*, float*, float, float) <cycle 1> [13]
+                0.42    0.00     200/2974        simulate(EventManager&, int) [4]
+                0.75    0.00     360/2974        advect(int, int, int, int, float*, float*, float*, float*, float*, float) [7]
+                1.05    0.00     505/2974        project(int, int, int, float*, float*, float*, float*, float*) [6]
+                3.98    0.00    1909/2974        vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [5]
+[2]     92.1    6.20    0.00    3374+2421    std::ctype<char>::do_widen(char) const <cycle 1> [2]
+                                 100             lin_solve(int, int, int, int, float*, float*, float, float) <cycle 1> [13]
+                                2421             std::ctype<char>::do_widen(char) const <cycle 1> [2]
 -----------------------------------------------
                                                  <spontaneous>
-[2]     45.6    0.00    3.07                 project(int, int, int, float*, float*, float*, float*, float*) [2]
-                2.45    0.62    2421/2975        std::ctype<char>::do_widen(char) const <cycle 1> [7]
+[3]     81.0    0.00    5.45                 main [3]
+                0.00    5.41       1/1           simulate(EventManager&, int) [4]
+                0.00    0.04       1/101         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [5]
+                0.00    0.00       1/1           allocate_data() [15]
+                0.00    0.00       1/1           clear_data() [14]
+                0.00    0.00       1/1           free_data() [16]
 -----------------------------------------------
-                0.75    0.00     100/400         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) <cycle 1> [8]
-                2.26    0.00     300/400         EventManager::get_events_at_timestamp(int) const [5]
-[3]     44.7    3.01    0.00     400         set_bnd(int, int, int, int, float*) [3]
+                0.00    5.41       1/1           main [3]
+[4]     80.4    0.00    5.41       1         simulate(EventManager&, int) [4]
+                0.00    3.94     100/101         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [5]
+                0.00    1.05     100/100         project(int, int, int, float*, float*, float*, float*, float*) [6]
+                0.42    0.00     200/2974        std::ctype<char>::do_widen(char) const <cycle 1> [2]
+                0.00    0.00     100/100         apply_events(std::vector<Event, std::allocator<Event> > const&) [12]
 -----------------------------------------------
-                                                 <spontaneous>
-[4]     44.0    0.00    2.96                 main [4]
-                0.00    2.96       1/1           simulate(EventManager&, int) [6]
-                0.00    0.00       1/1           EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) [17]
-                0.00    0.00       1/1           allocate_data() [16]
-                0.00    0.00       1/1           clear_data() [15]
-                0.00    0.00       1/101         apply_events(std::vector<Event, std::allocator<Event> > const&) [14]
+                0.00    0.04       1/101         main [3]
+                0.00    3.94     100/101         simulate(EventManager&, int) [4]
+[5]     59.1    0.00    3.98     101         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [5]
+                3.98    0.00    1909/2974        std::ctype<char>::do_widen(char) const <cycle 1> [2]
 -----------------------------------------------
-                0.00    2.96     100/100         simulate(EventManager&, int) [6]
-[5]     44.0    0.00    2.96     100         EventManager::get_events_at_timestamp(int) const [5]
-                2.26    0.00     300/400         set_bnd(int, int, int, int, float*) [3]
-                0.56    0.14     554/2975        std::ctype<char>::do_widen(char) const <cycle 1> [7]
-                0.01    0.00     100/200         lin_solve(int, int, int, int, float*, float*, float, float) [11]
------------------------------------------------
-                0.00    2.96       1/1           main [4]
-[6]     44.0    0.00    2.96       1         simulate(EventManager&, int) [6]
-                0.00    2.96     100/100         EventManager::get_events_at_timestamp(int) const [5]
-                0.00    0.00     100/101         apply_events(std::vector<Event, std::allocator<Event> > const&) [14]
------------------------------------------------
-                                 100             std::ctype<char>::do_widen(char) const <cycle 1> [7]
-                                 400             dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) <cycle 1> [10]
-                                1720             vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) <cycle 1> [8]
-                0.56    0.14     554/2975        EventManager::get_events_at_timestamp(int) const [5]
-                2.45    0.62    2421/2975        project(int, int, int, float*, float*, float*, float*, float*) [2]
-[7]     36.9    2.48    0.01    5095+100     std::ctype<char>::do_widen(char) const <cycle 1> [7]
-                0.01    0.00     100/200         lin_solve(int, int, int, int, float*, float*, float, float) [11]
-                                 100             vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) <cycle 1> [8]
-                                 100             dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) <cycle 1> [10]
-                                 100             std::ctype<char>::do_widen(char) const <cycle 1> [7]
------------------------------------------------
-                                 100             std::ctype<char>::do_widen(char) const <cycle 1> [7]
-[8]     14.6    0.23    0.75     100         vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) <cycle 1> [8]
-                0.75    0.00     100/400         set_bnd(int, int, int, int, float*) [3]
-                                1720             std::ctype<char>::do_widen(char) const <cycle 1> [7]
+                0.00    1.05     100/100         simulate(EventManager&, int) [4]
+[6]     15.6    0.00    1.05     100         project(int, int, int, float*, float*, float*, float*, float*) [6]
+                1.05    0.00     505/2974        std::ctype<char>::do_widen(char) const <cycle 1> [2]
 -----------------------------------------------
                                                  <spontaneous>
-[9]     10.3    0.69    0.00                 diffuse(int, int, int, int, float*, float*, float, float) [9]
------------------------------------------------
-                                 100             std::ctype<char>::do_widen(char) const <cycle 1> [7]
-[10]     4.5    0.30    0.00     100         dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) <cycle 1> [10]
-                                 400             std::ctype<char>::do_widen(char) const <cycle 1> [7]
------------------------------------------------
-                0.01    0.00     100/200         std::ctype<char>::do_widen(char) const <cycle 1> [7]
-                0.01    0.00     100/200         EventManager::get_events_at_timestamp(int) const [5]
-[11]     0.1    0.01    0.00     200         lin_solve(int, int, int, int, float*, float*, float, float) [11]
+[7]     11.2    0.00    0.75                 advect(int, int, int, int, float*, float*, float*, float*, float*, float) [7]
+                0.75    0.00     360/2974        std::ctype<char>::do_widen(char) const <cycle 1> [2]
 -----------------------------------------------
                                                  <spontaneous>
-[12]     0.1    0.01    0.00                 add_source(int, int, int, float*, float*, float) [12]
+[8]      4.3    0.29    0.00                 add_source(int, int, int, float*, float*, float) [8]
 -----------------------------------------------
-                0.00    0.00       1/101         main [4]
-                0.00    0.00     100/101         simulate(EventManager&, int) [6]
-[14]     0.0    0.00    0.00     101         apply_events(std::vector<Event, std::allocator<Event> > const&) [14]
+                                                 <spontaneous>
+[9]      3.4    0.23    0.00                 dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [9]
 -----------------------------------------------
-                0.00    0.00       1/1           main [4]
-[15]     0.0    0.00    0.00       1         clear_data() [15]
+                                                 <spontaneous>
+[10]     0.1    0.01    0.00                 diffuse(int, int, int, int, float*, float*, float, float) [10]
 -----------------------------------------------
-                0.00    0.00       1/1           main [4]
-[16]     0.0    0.00    0.00       1         allocate_data() [16]
+                0.00    0.00     100/100         simulate(EventManager&, int) [4]
+[12]     0.0    0.00    0.00     100         apply_events(std::vector<Event, std::allocator<Event> > const&) [12]
 -----------------------------------------------
-                0.00    0.00       1/1           main [4]
-[17]     0.0    0.00    0.00       1         EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) [17]
+                                 100             std::ctype<char>::do_widen(char) const <cycle 1> [2]
+[13]     0.0    0.00    0.00     100         lin_solve(int, int, int, int, float*, float*, float, float) <cycle 1> [13]
+                                 400             std::ctype<char>::do_widen(char) const <cycle 1> [2]
+-----------------------------------------------
+                0.00    0.00       1/1           main [3]
+[14]     0.0    0.00    0.00       1         clear_data() [14]
+-----------------------------------------------
+                0.00    0.00       1/1           main [3]
+[15]     0.0    0.00    0.00       1         allocate_data() [15]
+-----------------------------------------------
+                0.00    0.00       1/1           main [3]
+[16]     0.0    0.00    0.00       1         free_data() [16]
 -----------------------------------------------
 
  This table describes the call tree of the program, and was sorted by
@@ -222,8 +213,8 @@ notice and this notice are preserved.
 
 Index by function name
 
-  [12] add_source(int, int, int, float*, float*, float) [3] set_bnd(int, int, int, int, float*) [17] EventManager::read_events(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
-  [15] clear_data()            [6] simulate(EventManager&, int) [5] EventManager::get_events_at_timestamp(int) const
-  [14] apply_events(std::vector<Event, std::allocator<Event> > const&) [8] vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [7] std::ctype<char>::do_widen(char) const
-  [16] allocate_data()        [10] dens_step(int, int, int, float*, float*, float*, float*, float*, float, float) [1] <cycle 1>
-   [9] diffuse(int, int, int, int, float*, float*, float, float) [11] lin_solve(int, int, int, int, float*, float*, float, float)
+   [8] add_source(int, int, int, float*, float*, float) [6] project(int, int, int, float*, float*, float*, float*, float*) [13] lin_solve(int, int, int, int, float*, float*, float, float)
+  [14] clear_data()            [4] simulate(EventManager&, int) [2] std::ctype<char>::do_widen(char) const
+  [12] apply_events(std::vector<Event, std::allocator<Event> > const&) [5] vel_step(int, int, int, float*, float*, float*, float*, float*, float*, float, float) [1] <cycle 1>
+  [15] allocate_data()         [9] dens_step(int, int, int, float*, float*, float*, float*, float*, float, float)
+  [10] diffuse(int, int, int, int, float*, float*, float, float) [16] free_data()

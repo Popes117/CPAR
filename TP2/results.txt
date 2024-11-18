@@ -60,3 +60,28 @@ Total density after 100 timesteps: 140881
      4,627,234,749      mem-stores                                                    ( +-  0.19% )  (49.99%)
 
             13.931 +- 0.223 seconds time elapsed  ( +-  1.60% )
+
+16 threads - 2.37524
+16 threads - 2.37490
+16 threads - 2.3876
+
+Troca de Código
+
+16 threads - 2.36855
+16 threads - 2.36853
+16 threads - 2.36366
+
+
+Final Check :
+
+Com tasks:
+
+22 Threads - 1.594 s 
+21 Threads - 1.336 s 
+23 Threads - 1.469 s
+
+Sem tasks: 
+
+20 Threads - 1.570 s
+19 Threads - 1.530 s
+22 Threads - 1.504 s

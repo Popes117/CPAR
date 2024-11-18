@@ -1,4 +1,4 @@
-CPP = g++ -Wall -Ofast -funroll-loops -ftree-vectorize -ffast-math -march=native -fopenmp -mavx -std=c++11 
+CPP = g++ -Wall -O3 -funroll-loops -ftree-vectorize -ffast-math -march=native -fopenmp -mavx -std=c++11 
 PROF_FLAGS = -pg
 SRCS = src/main.cpp src/fluid_solver1.cpp src/EventManager.cpp
 #THREADS = 2
@@ -36,10 +36,21 @@ runclus3: all
 	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=8 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
 	export OMP_NUM_THREADS=16
 	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=16 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	export OMP_NUM_THREADS=19
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=19 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	export OMP_NUM_THREADS=20
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=20 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	export OMP_NUM_THREADS=21
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=21 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+	export OMP_NUM_THREADS=22
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=22 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
 	export OMP_NUM_THREADS=32
 	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=32 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
 	export OMP_NUM_THREADS=48
 	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=48 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+
+runclus4: all 
+	sbatch --partition=day --constraint=c24 --ntasks=1 --cpus-per-task=48 --exclusive run2.sh
 
 run: all
 	OMP_NUM_THREADS=2

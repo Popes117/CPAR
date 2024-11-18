@@ -25,7 +25,7 @@ inline float clamp(float value, float minVal, float maxVal) {
 // Add sources (density or velocity)
 void add_source(int M, int N, int O, float *x, float *s, float dt) {
   int size = (M + 2) * (N + 2) * (O + 2);
-  //#pragma omp parallel for
+  #pragma omp parallel for schedule(static)
   for (int i = 0; i < size; i++) {
     x[i] += dt * s[i];
   }
@@ -37,55 +37,66 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   int val = M + 2;
   int val2 = N + 2;
   auto neg_mask = (b == 3) ? -1.0F : 1.0F;
-
+  auto index = IX(0, 1, 0);
+  auto first_index = IX(0, 1, 1);
+  auto last_index = IX(0, 1, O);
+  int idx = IX(0,1,O + 1);
+  
   // Set boundary on faces
-  //#pragma omp parallel for
-  for (j = 1; j <= N; j++) { 
-    const auto index = IX(0, j, 0);
-    const auto first_index = IX(0, j, 1);
-    const auto last_index = IX(0, j, O);
-    int idx = IX(0,j,O + 1);
+  //#pragma omp parallel for collapse(2) private(neg_mask,index, first_index, last_index, idx)
+  for (j = 1; j <= N; j++) {
     for (i = 1; i <= M; i++) {
       const auto first_value = x[first_index + i];
       const auto last_value = x[last_index + i];
       x[index + i] = neg_mask * first_value;
       x[idx + i] = neg_mask * last_value;
     }
+    index += 86;
+    first_index += 86;
+    last_index += 86;
+    idx += 86;
   }
 
   // Mask for b == 1 in the second loop (x-axis)
   neg_mask = (b == 1) ? -1.0F : 1.0F;
+  index = IX(0, 1, 0);
+  first_index = IX(1, 1, 0);
+  last_index = IX(M, 1, 0);
+  idx = IX(M + 1, 1, 0);
 
   // Set boundaries on the x faces
-  //#pragma omp parallel for
+  //#pragma omp parallel for collapse(2) private(neg_mask, index, first_index, last_index, idx)
   for (j = 1; j <= N; j++) {
-      const auto index0 = IX(0, j, 0);
-      const auto first_index = IX(1, j, 0);
-      const auto last_index = IX(M, j, 0);
-      int idx = IX(M + 1, j, 0);
       for (i = 1; i <= M; i++) {
           const auto first_value = x[first_index + i];
           const auto last_value = x[last_index + i];
-          x[index0 + i] = neg_mask * first_value;
-          x[idx] = neg_mask * last_value; 
+          x[index + i] = neg_mask * first_value;
+          x[idx] = neg_mask * last_value;
       }
+      index += 86;
+      first_index += 86;
+      last_index += 86;
+      idx += 86;
   }
 
   // Mask for b == 2 in the third loop (y-axis)
   neg_mask = (b == 2) ? -1.0F : 1.0F;
+  index = IX(1, 0, 0);
+  first_index = IX(1, 1, 0);
+  last_index = IX(1, N, 0);
+  idx = IX(1, N + 1, 0);
 
   // Set boundaries on the y faces
   //#pragma omp parallel for
   for (j = 1; j <= N; j++) {
-      const auto index0 = IX(j, 0, 0);
-      const auto first_index = IX(j, 1, 0);
-      const auto last_index = IX(j, N, 0);
-      int idx = IX(j, N + 1, 0);
       const auto first_value = x[first_index + j];
       const auto last_value = x[last_index + j];
-      x[index0] = neg_mask * first_value;
-      x[idx] = neg_mask * last_value; 
-      
+      x[index] = neg_mask * first_value;
+      x[idx] = neg_mask * last_value;
+      index += 1;
+      first_index += 1;
+      last_index += 1;
+      idx += 1;
   }
 
   // Set corners
@@ -93,8 +104,9 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   x[ixm100] = 0.33f * (x[ixm00] + x[ixm110] + x[ixm101]);
   x[ix0n10] = 0.33f * (x[ix1n10] + x[ix0n0] + x[ix0n11]);
   x[ixm1n10] = 0.33f * (x[ixmn10] + x[ixm1n0] + x[ixm1n11]);
-  
+
 }
+
 /*
 // Linear solve for implicit methods (diffusion)
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a,
@@ -179,7 +191,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
         #pragma omp parallel 
         {
           // Primeiro conjunto de índices (paridade baseada em (j + k) % 2)
-          #pragma omp for collapse(2) reduction(max:max_c)
+          #pragma omp for collapse(2) reduction(max:max_c) schedule(static)
           for (int k = 1; k <= O; k++) {
               for (int j = 1; j <= N; j++) {
                   for (int i = 1 + (j + k) % 2; i <= M; i += 2) {
@@ -196,7 +208,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
           }
 
           // Segundo conjunto de índices (paridade invertida)
-          #pragma omp for collapse(2) reduction(max:max_c)
+          #pragma omp for collapse(2) reduction(max:max_c) schedule(static)
           for (int k = 1; k <= O; k++) {
               for (int j = 1; j <= N; j++) {
                   for (int i = 1 + (j + k + 1) % 2; i <= M; i += 2) {
@@ -233,7 +245,7 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
 
     #pragma omp parallel
     {
-      #pragma omp for collapse(3)
+      #pragma omp for collapse(3) schedule(static)
       for (int k = 1; k <= O; k++) {
           for (int j = 1; j <= N; j++) {
               for (int i = 1; i <= M; i++) {
@@ -285,7 +297,7 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     int max = MAX(M, MAX(N, O));
     float invMax = 1.0f / max;
 
-    #pragma omp parallel for collapse(3)
+    #pragma omp parallel for collapse(3) schedule(static)  
     for (int k = 1; k <= O; k++) {
       for (int j = 1; j <= N; j++) {
         for (int i = 1; i <= M; i++) {
@@ -297,12 +309,27 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
         }
       }
     }
+#if 1
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            #pragma omp task
+            set_bnd(M, N, O, 0, div);
 
+            #pragma omp task
+            set_bnd(M, N, O, 0, p);
+
+            #pragma omp taskwait  // Sincroniza antes de prosseguir para `lin_solve`
+        }
+    }
+#else 
     set_bnd(M, N, O, 0, div);
     set_bnd(M, N, O, 0, p);
+#endif
     lin_solve(M, N, O, 0, p, div, 1, 6);
 
-    #pragma omp parallel for collapse(3) 
+    #pragma omp parallel for collapse(3) schedule(static)
     // Ajuste de u, v e w sem loop blocking
     for (int k = 1; k <= O; k++) {
       for (int j = 1; j <= N; j++) {
@@ -315,11 +342,29 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
         }
       }
     }
+#if 1
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            #pragma omp task
+            set_bnd(M, N, O, 1, u);
 
+            #pragma omp task
+            set_bnd(M, N, O, 2, v);
+
+            #pragma omp task
+            set_bnd(M, N, O, 3, w);
+
+            #pragma omp taskwait  // Aguarda todas as bordas serem atualizadas
+        }
+    }
+#else
     set_bnd(M, N, O, 1, u);
     set_bnd(M, N, O, 2, v);
     set_bnd(M, N, O, 3, w);
-  
+#endif
+
 }
 
 #if 1
