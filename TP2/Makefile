@@ -1,8 +1,6 @@
 CPP = g++ -Wall -O3 -funroll-loops -ftree-vectorize -ffast-math -march=native -fopenmp -mavx -std=c++11 
 PROF_FLAGS = -pg
-SRCS = src/main.cpp src/fluid_solver1.cpp src/EventManager.cpp
-#THREADS = 2
-THREADS ?= 2
+SRCS = src/main.cpp src/fluid_solver.cpp src/EventManager.cpp
 
 all:
 	$(CPP) $(SRCS) -o fluid_sim
@@ -12,22 +10,25 @@ clean:
 	@rm fluid_sim
 	@echo Done.
 
-runseq:
+runseq: all
 	./fluid_sim
 
-runpar:
-#	./fluid_sim $(THREADS) -> exige mudar o código da main e não sei quão boa ideia é isso
-	OMP_NUM_THREADS=$(THREADS) 
-	./fluid_sim	
+runpar: all 
+	export OMP_NUM_THREADS=20
+	./fluid_sim
+
+runseq2: all
+	sbatch --partition cpar --cpus-per-task=40 ./perf.sh seqStat
+
+runpar2: all
+	sbatch --partition cpar --cpus-per-task=40 ./perf.sh parStat
+
+clusreport : all 
+	sbatch --partition cpar --cpus-per-task=40 ./perf.sh report 
 
 runclus: all
-	export OMP_NUM_THREADS=2
-	srun --partition=day --nodelist=compute-134-116 --cpus-per-task=2 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
-
-runclus2 : all 
-	sbatch --partition=day --nodelist=compute-134-116 --cpus-per-task=24 run.sh
-
-runclus3: all
+	export OMP_NUM_THREADS=1
+	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=1 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
 	export OMP_NUM_THREADS=2
 	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=2 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
 	export OMP_NUM_THREADS=4
@@ -49,10 +50,10 @@ runclus3: all
 	export OMP_NUM_THREADS=48
 	srun --partition day --constraint=c24 --ntasks=1 --cpus-per-task=48 --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
 
-runclus4: all 
+runclus2: all 
 	sbatch --partition=day --constraint=c24 --ntasks=1 --cpus-per-task=48 --exclusive run2.sh
 
-run: all
+runlocal: all
 	OMP_NUM_THREADS=2
 	perf stat -d ./fluid_sim
 	OMP_NUM_THREADS=4
@@ -64,20 +65,21 @@ run: all
 	OMP_NUM_THREADS=32
 	perf stat -d ./fluid_sim
 
-run2: all
-	export OMP_NUM_THREADS=16
-	perf stat -d ./fluid_sim
-
 prof:
 	$(CPP) $(CFLAGS) $(PROF_FLAGS) $(SRCS) -o fluid_sim
 
-srun-prof: prof
-	srun --partition=cpar --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
+perf-report: prof
+	perf record ./fluid_sim
+	perf report -n --stdio > perfreport.txt
 
 run-prof: prof
 	./fluid_sim 
 
 graph-prof: run-prof
+	gprof fluid_sim > gprof.txt
+	gprof fluid_sim | gprof2dot | dot -Tpng -o graph.png
+
+graph-prof2: run-prof
 	gprof fluid_sim > main.gprof
 	./gprof2dot.py -o output.dot main.gprof
 	rm gmon.out

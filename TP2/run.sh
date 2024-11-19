@@ -1,16 +1,11 @@
 #!/bin/sh
 #
-#SBATCH --exclusive 	  # exclusive node for the job
-#SBATCH --time=02:00      # allocation for 2 minutes
+#SBATCH --exclusive     # exclusive node for the job
+#SBATCH --time=05:00    # allocation for 2 minutes
 
-export OMP_NUM_THREADS=1
-time ./fluid_sim
-export OMP_NUM_THREADS=2
-time ./fluid_sim
-export OMP_NUM_THREADS=4
-time ./fluid_sim
-export OMP_NUM_THREADS=8
-time ./fluid_sim
-export OMP_NUM_THREADS=16
-time ./fluid_sim
-export OMP_NUM_THREADS=24
+for threads in {1..48}
+do
+    export OMP_NUM_THREADS=$threads
+    echo "Running with OMP_NUM_THREADS=$threads"
+    time ./fluid_sim
+done
