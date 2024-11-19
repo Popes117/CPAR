@@ -11,9 +11,9 @@ if [ "$1" == "seqStat" ]; then
     time ./fluid_sim
 elif [ "$1" == "parStat" ]; then
     echo "Running perf stat..."
-    export OMP_NUM_THREADS=22
+    export OMP_NUM_THREADS=20
     perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./fluid_sim
-    echo "Running with OMP_NUM_THREADS=22"
+    echo "Running with OMP_NUM_THREADS=20"
     time ./fluid_sim
 elif [ "$1" == "report" ]; then
     echo "Running perf record and generating report..."
