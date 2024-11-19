@@ -1,5 +1,6 @@
 {
     "files.associations": {
         "random": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "/home/marta/Desktop/4ano/cpar/trabalho/CPAR/TP2/src"
 }

@@ -4,8 +4,7 @@
 #include <iostream>
 #include <omp.h>
 
-#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1 dimensional (1D) index from 3D coordinates -> versão primeira fase 
-//#define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
+#define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1 dimensional (1D) index from 3D coordinates
 #define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}            //Swap two pointers
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))                     //Get maximum between two values
 #define LINEARSOLVERTIMES 20                                    //Number of iterations for the linear solver
@@ -105,8 +104,6 @@ void set_bnd(int M, int N, int O, int b, float *x) {
 }
 
 // red-black solver with convergence check
-//NOTAS: Alterações feitas vindas da segunda fase -> passar a divisão por c para multiplicação por inversa do div;
-//                                                    troca dos loops
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
     float tol = 1e-7, max_c;
     int l = 0;
@@ -181,7 +178,7 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
                   float y = j - dtY * v[idx];
                   float z = k - dtZ * w[idx];
 
-                  // Clamping otimizado utilizando função inline
+                  // Optimized clamping using inline function
                   x = clamp(x, 0.5f, M + 0.5f);
                   y = clamp(y, 0.5f, N + 0.5f);
                   z = clamp(z, 0.5f, O + 0.5f);
@@ -194,7 +191,7 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
                   float t1 = y - j0, t0 = 1 - t1;
                   float u1 = z - k0, u0 = 1 - u1;
 
-                  // Acesso direto aos elementos do array para melhorar o desempenho
+                  // Direct access to array elements to improve performance
                   float d0_i0j0k0 = d0[IX(i0, j0, k0)];
                   float d0_i0j0k1 = d0[IX(i0, j0, k1)];
                   float d0_i0j1k0 = d0[IX(i0, j1, k0)];
@@ -204,7 +201,7 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
                   float d0_i1j1k0 = d0[IX(i1, j1, k0)];
                   float d0_i1j1k1 = d0[IX(i1, j1, k1)];
 
-                  // Interpolação 3D
+                  // 3D interpolation
                   d[idx] = s0 * (t0 * (u0 * d0_i0j0k0 + u1 * d0_i0j0k1) +
                                  t1 * (u0 * d0_i0j1k0 + u1 * d0_i0j1k1)) +
                            s1 * (t0 * (u0 * d0_i1j0k0 + u1 * d0_i1j0k1) +
@@ -241,7 +238,7 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     lin_solve(M, N, O, 0, p, div, 1, 6);
 
     #pragma omp parallel for collapse(3) schedule(static)
-    // Ajuste de u, v e w sem loop blocking
+    // Adjustment of u, v, and w without loop blocking
     for (int k = 1; k <= O; k++) {
       for (int j = 1; j <= N; j++) {
         for (int i = 1; i <= M; i++) {
