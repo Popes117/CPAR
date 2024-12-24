@@ -2,10 +2,15 @@
 #include "fluid_solver.h"
 #include <iostream>
 #include <vector>
+#include <cuda.h>
 
 #define SIZE 168
 
 #define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
+
+#define NUM_BLOCKS 512
+#define NUM_THREADS_PER_BLOCK 256
+#define TOTALSIZE NUM_BLOCKS*NUM_THREADS_PER_BLOCK
 
 // Globals for the grid size
 static int M = SIZE;
@@ -18,10 +23,14 @@ static float visc = 0.0001f; // Viscosity constant
 // Fluid simulation arrays
 static float *u, *v, *w, *u_prev, *v_prev, *w_prev;
 static float *dens, *dens_prev;
+float *du, *dv, *dw;
+float *du_prev, *dv_prev, *dw_prev;
+float *ddens, *ddens_prev;
 
 // Function to allocate simulation data
 int allocate_data() {
   int size = (M + 2) * (N + 2) * (O + 2);
+  int bytes = size * sizeof(float);
   u = new float[size];
   v = new float[size];
   w = new float[size];
@@ -30,6 +39,14 @@ int allocate_data() {
   w_prev = new float[size];
   dens = new float[size];
   dens_prev = new float[size];
+  cudaMalloc((void **)&du, bytes);
+  cudaMalloc((void **)&dv, bytes);
+  cudaMalloc((void **)&dw, bytes);
+  cudaMalloc((void **)&du_prev, bytes);
+  cudaMalloc((void **)&dv_prev, bytes);
+  cudaMalloc((void **)&dw_prev, bytes);
+  cudaMalloc((void **)&ddens, bytes);
+  cudaMalloc((void **)&ddens_prev, bytes);
 
   if (!u || !v || !w || !u_prev || !v_prev || !w_prev || !dens || !dens_prev) {
     std::cerr << "Cannot allocate memory" << std::endl;

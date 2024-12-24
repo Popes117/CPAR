@@ -3,11 +3,16 @@
 #include <algorithm>
 #include <iostream>
 #include <omp.h>
+#include <cuda.h>
 
 #define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1 dimensional (1D) index from 3D coordinates
 #define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}            //Swap two pointers
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))                     //Get maximum between two values
 #define LINEARSOLVERTIMES 20                                    //Number of iterations for the linear solver
+
+#define NUM_BLOCKS 512
+#define NUM_THREADS_PER_BLOCK 256
+#define TOTALSIZE NUM_BLOCKS*NUM_THREADS_PER_BLOCK
 
 //Global values to minimize the number of calculations of the index between steps
 int ix000, ix100, ix010, ix001;
@@ -101,6 +106,36 @@ void set_bnd(int M, int N, int O, int b, float *x) {
 
 }
 
+__global__ void lin_solve_kernel(
+    int M, int N, int O, int b, float *x, float *x0, float a, float c) {
+    
+    float max_change = 0.0f;
+
+    int val = M + 2;
+    int val2 = N + 2;
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x + 1; // Índice em x
+    int j = blockIdx.y * blockDim.y + threadIdx.y + 1; // Índice em y
+    int k = blockIdx.z * blockDim.z + threadIdx.z + 1; // Índice em z
+
+    if (i > M || j > N || k > O) return; // Garantir que está dentro do domínio
+
+    int idx = IX(i, j, k);
+    float div = 1 / c;
+
+    float old_x = x[idx];
+    x[idx] = (x0[idx] +
+              a * (x[idx - 1] + x[idx + 1] +
+                   x[idx - 170] + x[idx + 170] +
+                   x[idx - 28900] + x[idx + 28900])) * div;
+
+    // Calcula a alteração máxima (usando memória compartilhada)
+    float change = fabs(x[idx] - old_x);
+    atomicMax(max_change, change); // Atualiza o máximo globalmente
+    set_bnd(M, N, O, b, x); 
+}
+
+
 // red-black solver with convergence check
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
     float tol = 1e-7, max_c;
@@ -120,10 +155,6 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                               a * (x[idx - 1] + x[idx + 1] +
                                    x[idx - 170] + x[idx + 170] +
                                    x[idx - 28900] + x[idx + 28900])) * div;
-                    //x[IX(i, j, k)] = (x0[IX(i, j, k)] +
-                    //        a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
-                    //             x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                    //             x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) * div;
                     float change = fabs(x[idx] - old_x);
                     if (change > max_c) max_c = change;
                 }
@@ -140,11 +171,6 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                                    x[idx - 170] + x[idx + 170] +
                                    x[idx - 28900] + x[idx + 28900])) * div;
                     float change = fabs(x[idx] - old_x);
-                    //x[IX(i, j, k)] = (x0[IX(i, j, k)] +
-                    //        a * (x[IX(i - 1, j, k)] + x[IX(i + 1, j, k)] +
-                    //             x[IX(i, j - 1, k)] + x[IX(i, j + 1, k)] +
-                    //             x[IX(i, j, k - 1)] + x[IX(i, j, k + 1)])) * div;
-                    //float change = fabs(x[idx] - old_x);
                     if (change > max_c) max_c = change;
                 }
             }
@@ -158,7 +184,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
 void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
   int max = MAX(MAX(M, N), O);
   float a = dt * diff * max * max;
-  lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
+  lin_solve_kernel<<<NUM_BLOCKS, NUM_THREADS_PER_BLOCK>>>(M, N, O, b, x, x0, a, 1 + 6 * a);
 }
 
 // Advection step (uses velocity field to move quantities)
@@ -230,7 +256,7 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
 
     set_bnd(M, N, O, 0, div);
     set_bnd(M, N, O, 0, p);
-    lin_solve(M, N, O, 0, p, div, 1, 6);
+    lin_solve_kernel<<<NUM_BLOCKS, NUM_THREADS_PER_BLOCK>>>(M, N, O, 0, p, div, 1, 6);
 
     // Adjustment of u, v, and w without loop blocking
     for (int k = 1; k <= O; k++) {
