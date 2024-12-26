@@ -74,6 +74,14 @@ void free_data() {
   delete[] w_prev;
   delete[] dens;
   delete[] dens_prev;
+  cudaFree(du);
+  cudaFree(dv);
+  cudaFree(dw);
+  cudaFree(du_prev);
+  cudaFree(dv_prev);
+  cudaFree(dw_prev);
+  cudaFree(ddens);
+  cudaFree(ddens_prev);
 }
 
 // Apply events (source or force) for the current timestep
@@ -115,6 +123,7 @@ void simulate(EventManager &eventManager, int timesteps) {
     // Perform the simulation steps
     vel_step(M, N, O, u, v, w, u_prev, v_prev, w_prev, visc, dt);
     dens_step(M, N, O, dens, dens_prev, u, v, w, diff, dt);
+    std::cout << "Timestep " << t << std::endl;
   }
 }
 
