@@ -148,7 +148,7 @@ __global__ void set_bnd_kernel(
     int val = M + 2;
     int val2 = N + 2;
 
-    if (i > M || j > N) return; // Ensure within bounds
+    if (i >= M || j >= N || i < 0 || j < 0) return; // Ensure within bounds
 
     float neg_mask;
 
@@ -211,30 +211,20 @@ __global__ void set_bnd_kernel(
 
 void launch_set_bnd_kernel(int M, int N, int O, int b, float *x) {
 
-    float *x_d;
-    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
+    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);  
 
-    cudaMalloc((void **)&x_d, size);
-    cudaMemcpy(x_d, x, size, cudaMemcpyHostToDevice);   
-
-    dim3 blockDim(16, 16, 4);
-    dim3 gridDim((M + 2 + blockDim.x - 1) / blockDim.x,
-                   (N + 2 + blockDim.y - 1) / blockDim.y,
-                   (O + 2 + blockDim.z - 1) / blockDim.z);
+    dim3 blockDim(16, 16);
+    dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
+                   (N + blockDim.y - 1) / blockDim.y);
     set_bnd_kernel<<<gridDim, blockDim>>>(
-        M, N, O, b, x_d,
+        M, N, O, b, x,
         ix010, ix001, ix100, ix000,
         ixm110, ixm101, ixm00, ixm100,
         ix0n0, ix0n11, ix1n10, ix0n10,
         ixm1n0, ixm1n11, ixmn10, ixm1n10
     );
-
-    cudaMemcpy(x, x_d, size, cudaMemcpyDeviceToHost);   
-    cudaFree(x_d);    
-
+   
 }   
-
-#if 0
 
 __device__ float atomicMaxFloat(float *address, float value) {
     int *address_as_int = (int *)address; // Reinterpreta o endereço como inteiro
@@ -258,80 +248,11 @@ __device__ void atomicMaxFloatPrecise(float *address, float val) {
     }
 }
 
-__global__ void red_lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, float *max_c) {
-
-    int val = M + 2;
-    int val2 = N + 2;
-    float div = 1/c;
-    int y = M + 2;
-    int z = (M + 2) * (N + 2);
-
-    // Índices globais baseados em thread e bloco
-    int i = blockIdx.x * blockDim.x + threadIdx.x + 1; // Garante que começa em 1
-    int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
-    int k = blockIdx.z * blockDim.z + threadIdx.z + 1;
-
-    // Verifica se está dentro dos limites
-    if (i > M || j > N || k > O) return;
-
-    // Condição para elementos "black" (verificação baseada em red-black ordering)
-    if ((i + j + k) % 2 == 0) {
-        int idx = IX(i, j, k);
-        float div = 1.0f / c;
-        float old_x = x[idx];
-        
-        // Atualiza o valor de x[idx] com a fórmula dada
-        x[idx] = (x0[idx] +
-                  a * (x[idx - 1] + x[idx + 1] +
-                       x[idx - y] + x[idx + y] +
-                       x[idx - z] + x[idx + z])) * div;
-        
-        // Calcula a alteração e atualiza max_c de forma atômica
-        float change = fabsf(x[idx] - old_x);
-        atomicMaxFloat(max_c, change); // Atualiza max_c usando operação atômica
-    }
-
-}
-
-__global__ void black_lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, float *max_c) {
-    
-    int val = M + 2;
-    int val2 = N + 2;
-    float div = 1/c;
-    int y = M + 2;
-    int z = (M + 2) * (N + 2);
-
-    // Índices globais baseados em thread e bloco
-    int i = blockIdx.x * blockDim.x + threadIdx.x + 1; // Garante que começa em 1
-    int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
-    int k = blockIdx.z * blockDim.z + threadIdx.z + 1;
-
-    // Verifica se está dentro dos limites
-    if (i > M || j > N || k > O) return;
-
-    // Condição para elementos "black" (verificação baseada em red-black ordering)
-    if ((i + j + k) % 2 == 1) {
-        int idx = IX(i, j, k);
-        float div = 1.0f / c;
-        float old_x = x[idx];
-        
-        // Atualiza o valor de x[idx] com a fórmula dada
-        x[idx] = (x0[idx] +
-                  a * (x[idx - 1] + x[idx + 1] +
-                       x[idx - y] + x[idx + y] +
-                       x[idx - z] + x[idx + z])) * div;
-        
-        // Calcula a alteração e atualiza max_c de forma atômica
-        float change = fabsf(x[idx] - old_x);
-        atomicMaxFloat(max_c, change); // Atualiza max_c usando operação atômica
-    }
-}
-
 __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, float *max_c, bool process_red) {
     
     int val = M + 2;
     int val2 = N + 2;
-    float div = 1.0f / c;
+    float divv = 1.0f / c;
     int y = M + 2;
     int z = (M + 2) * (N + 2);
 
@@ -354,7 +275,7 @@ __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0
     x[idx] = (x0[idx] +
               a * (x[idx - 1] + x[idx + 1] +
                    x[idx - y] + x[idx + y] +
-                   x[idx - z] + x[idx + z])) * div;
+                   x[idx - z] + x[idx + z])) * divv;
 
     // Calcula a alteração e atualiza max_c de forma atômica
     float change = fabsf(x[idx] - old_x);
@@ -370,17 +291,9 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
     float *d_max_c;
     cudaMalloc(&d_max_c, sizeof(float));
 
-    // Aloca memória na GPU para `x` e `x0`
-    float *x_d, *x0_d;
-    cudaMalloc(&x_d, (M + 2) * (N + 2) * (O + 2) * sizeof(float));
-    cudaMalloc(&x0_d, (M + 2) * (N + 2) * (O + 2) * sizeof(float));
-
-    // Copia os dados de `x` e `x0` para o device
-    cudaMemcpy(x_d, x, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(x0_d, x0, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
-
     // Configuração do grid e blocos
     dim3 blockDim(16, 16, 4);
+    // Para a maneira do Artur, divide o M/2
     dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
                  (N + blockDim.y - 1) / blockDim.y,
                  (O + blockDim.z - 1) / blockDim.z);
@@ -404,32 +317,24 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
         //cudaDeviceSynchronize();
 
         // Processa células vermelhas
-        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x_d, x0_d, a, c, d_max_c, true);
-        // Sincroniza
+        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, d_max_c, true);
         cudaDeviceSynchronize();
 
         // Processa células pretas
-        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x_d, x0_d, a, c, d_max_c, false);
-        // Sincroniza
+        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, d_max_c, false);
         cudaDeviceSynchronize();
 
         // Copia `max_c` de volta para o host para verificação
         cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
-        std::cout << "max_c (host) antes da set_bnd : " << max_c << std::endl;
+        //std::cout << "max_c (host) antes da set_bnd : " << max_c << std::endl;
         // Atualiza os limites com o kernel `set_bnd`
         launch_set_bnd_kernel(M, N, O, b, x);
 
-    } while (max_c > tol && ++l < 20);
-
-    cudaMemcpy(x, x_d, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
+    } while (++l < 20);
 
     // Libera a memória alocada para `d_max_c`
     cudaFree(d_max_c);
-    cudaFree(x_d);
-    cudaFree(x0_d);
 }
-
-#else 
 
 // red-black solver with convergence check
 void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
@@ -440,6 +345,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
     float div = 1/c;
     int y = M + 2;
     int z = (M + 2) * (N + 2);
+    float *x_d;
     
     do {
         max_c = 0.0f;
@@ -473,17 +379,36 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
             }
         }
 
-        launch_set_bnd_kernel(M, N, O, b, x); 
+        set_bnd(M, N, O, b, x);
+
+        //cudaMalloc((void **)&x_d, (M + 2) * (N + 2) * (O + 2) * sizeof(float));
+        //cudaMemcpy(x_d, x, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+        //launch_set_bnd_kernel(M, N, O, b, x_d);
+        //cudaMemcpy(x, x_d, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
+        //cudaFree(x_d); 
     } while (max_c > tol && ++l < 20);
 }
-
-#endif
 
 // Diffusion step (uses implicit method)
 void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
     int max = MAX(MAX(M, N), O);
     float a = dt * diff * max * max;
-    lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
+    float *x_d, *x0_d;
+    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
+
+    //lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
+
+    cudaMalloc((void **)&x_d, size);
+    cudaMalloc((void **)&x0_d, size);
+    cudaMemcpy(x_d, x, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(x0_d, x0, size, cudaMemcpyHostToDevice);
+
+    lin_solve_kernel(M, N, O, b, x_d, x0_d, a, 1 + 6 * a);
+    
+    cudaMemcpy(x, x_d, size, cudaMemcpyDeviceToHost);
+    
+    cudaFree(x_d);
+    cudaFree(x0_d);
 }
 
 // Advection step (uses velocity field to move quantities)
@@ -491,6 +416,8 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
     float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
     int val = M + 2;
     int val2 = N + 2;
+    float *d_d;
+    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
 
     for (int k = 1; k <= O; k++) {
         for (int j = 1; j <= N; j++) {
@@ -532,7 +459,14 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
             }
         }
     }
-    launch_set_bnd_kernel(M, N, O, b, d);
+
+    set_bnd(M, N, O, b, d);
+
+    //cudaMalloc((void **)&d_d, size);
+    //cudaMemcpy(d_d, d, size, cudaMemcpyHostToDevice);   
+    //launch_set_bnd_kernel(M, N, O, b, d_d);
+    //cudaMemcpy(d, d_d, size, cudaMemcpyDeviceToHost);
+    //cudaFree(d_d);
 }
 
 __global__ void advect_kernel(int M, int N, int O, int b, float *d, const float *d0, float *u, float *v, float *w, float dt) {
@@ -636,13 +570,13 @@ __global__ void loop1_project_kernel(int M, int N, int O, float *u, float *v, fl
     int j = blockIdx.y * blockDim.y + threadIdx.y + 1; // Índice em y
     int k = blockIdx.z * blockDim.z + threadIdx.z + 1; // Índice em z
 
-    if (i > M || j > N || k > O) return; // Fora dos limites
+    if (i < 1 || j < 1 || k < 1 || i > M || j > N || k > O) return;
 
     int idx = IX(i, j, k);
 
     div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + y] -
                          v[idx - y] + w[idx + z] - w[idx - z])) * invMax;
-    p[idx] = 0;
+    p[idx] = 0.0f;
 }
 
 __global__ void loop2_project_kernel(int M, int N, int O, float *u, float *v, float *w, float *p) {
@@ -658,6 +592,9 @@ __global__ void loop2_project_kernel(int M, int N, int O, float *u, float *v, fl
     int k = blockIdx.z * blockDim.z + threadIdx.z + 1; // Índice em z
 
     // Adjustment of u, v, and w without loop blocking
+
+    if (i < 1 || j < 1 || k < 1 || i > M || j > N || k > O) return;
+
     int idx = IX(i, j, k);
 
     u[idx] -= 0.5f * (p[idx + 1] - p[idx - 1]);
@@ -665,13 +602,14 @@ __global__ void loop2_project_kernel(int M, int N, int O, float *u, float *v, fl
     w[idx] -= 0.5f * (p[idx + z] - p[idx - z]);
 }
 
-void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *div) {
+void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *divv) {
     int val = M + 2;
     int val2 = N + 2;
     int y = M + 2;
     int z = (M + 2) * (N + 2); 
     int max = MAX(M, MAX(N, O));
     float invMax = 1.0f / max;
+    float *u_d, *v_d, *w_d, *p_d, *div_d;
 
 #if 0
 
@@ -688,31 +626,31 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     cudaMemcpy(v_d, v, size, cudaMemcpyHostToDevice);
     cudaMemcpy(w_d, w, size, cudaMemcpyHostToDevice);
     cudaMemcpy(p_d, p, size, cudaMemcpyHostToDevice);
-    cudaMemcpy(div_d, div, size, cudaMemcpyHostToDevice);   
+    cudaMemcpy(div_d, divv, size, cudaMemcpyHostToDevice);   
 
     dim3 blockDim(16, 16, 4);
-    dim3 gridDim((M + 2 + blockDim.x - 1) / blockDim.x,
-                   (N + 2 + blockDim.y - 1) / blockDim.y,
-                   (O + 2 + blockDim.z - 1) / blockDim.z);
+    dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
+                   (N + blockDim.y - 1) / blockDim.y,
+                   (O + blockDim.z - 1) / blockDim.z);
     loop1_project_kernel<<<gridDim, blockDim>>>(M, N, O, u_d, v_d, w_d, p_d, div_d);
     cudaDeviceSynchronize();
 
-    launch_set_bnd_kernel(M, N, O, 0, div);
-    launch_set_bnd_kernel(M, N, O, 0, p);
-    lin_solve(M, N, O, 0, p, div, 1, 6);
+    launch_set_bnd_kernel(M, N, O, 0, div_d);
+    launch_set_bnd_kernel(M, N, O, 0, p_d);
+    lin_solve_kernel(M, N, O, 0, p_d, div_d, 1, 6);
 
     loop2_project_kernel<<<gridDim, blockDim>>>(M, N, O, u_d, v_d, w_d, p_d);
     cudaDeviceSynchronize();
+
+    launch_set_bnd_kernel(M, N, O, 1, u_d),
+    launch_set_bnd_kernel(M, N, O, 2, v_d);
+    launch_set_bnd_kernel(M, N, O, 3, w_d);
 
     cudaMemcpy(u, u_d, size, cudaMemcpyDeviceToHost);  
     cudaMemcpy(v, v_d, size, cudaMemcpyDeviceToHost);  
     cudaMemcpy(w, w_d, size, cudaMemcpyDeviceToHost);  
     cudaMemcpy(p, p_d, size, cudaMemcpyDeviceToHost);  
-    cudaMemcpy(div, div_d, size, cudaMemcpyDeviceToHost);  
-
-    launch_set_bnd_kernel(M, N, O, 1, u);
-    launch_set_bnd_kernel(M, N, O, 2, v);
-    launch_set_bnd_kernel(M, N, O, 3, w);
+    cudaMemcpy(divv, div_d, size, cudaMemcpyDeviceToHost);  
 
     cudaFree(u_d);
     cudaFree(v_d);
@@ -727,16 +665,29 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
         for (int i = 1; i <= M; i++) {
           int idx = IX(i, j, k);
 
-          div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + y] -
+          divv[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + y] -
                                v[idx - y] + w[idx + z] - w[idx - z])) * invMax;
           p[idx] = 0;
         }
       }
     }
 
-    launch_set_bnd_kernel(M, N, O, 0, div);
-    launch_set_bnd_kernel(M, N, O, 0, p);
-    lin_solve(M, N, O, 0, p, div, 1, 6);
+    set_bnd(M, N, O, 0, divv);
+    set_bnd(M, N, O, 0, p);
+    //lin_solve(M, N, O, 0, p, div, 1, 6);
+    
+    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
+    cudaMalloc((void **)&p_d, size);
+    cudaMalloc((void **)&div_d, size);
+    cudaMemcpy(p_d, p, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(div_d, divv, size, cudaMemcpyHostToDevice); 
+
+    lin_solve_kernel(M, N, O, 0, p_d, div_d, 1, 6);
+
+    cudaMemcpy(p, p_d, size, cudaMemcpyDeviceToHost);  
+    
+    cudaFree(p_d);
+    cudaFree(div_d); 
 
     // Adjustment of u, v, and w without loop blocking
     for (int k = 1; k <= O; k++) {
@@ -751,9 +702,9 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
       }
     }
 
-    launch_set_bnd_kernel(M, N, O, 1, u);
-    launch_set_bnd_kernel(M, N, O, 2, v);
-    launch_set_bnd_kernel(M, N, O, 3, w);
+    set_bnd(M, N, O, 1, u);
+    set_bnd(M, N, O, 2, v);
+    set_bnd(M, N, O, 3, w);
 #endif
 }
 

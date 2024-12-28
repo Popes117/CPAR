@@ -130,3 +130,72 @@ void launch_advect_kernel(int M, int N, int O, int b, float *d, const float *d0,
     cudaFree(v_d);
     cudaFree(w_d);    
 }   
+
+__global__ void red_lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, float *max_c) {
+
+    int val = M + 2;
+    int val2 = N + 2;
+    float div = 1/c;
+    int y = M + 2;
+    int z = (M + 2) * (N + 2);
+
+    // Índices globais baseados em thread e bloco
+    int i = blockIdx.x * blockDim.x + threadIdx.x + 1; // Garante que começa em 1
+    int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
+    int k = blockIdx.z * blockDim.z + threadIdx.z + 1;
+
+    // Verifica se está dentro dos limites
+    if (i > M || j > N || k > O) return;
+
+    // Condição para elementos "black" (verificação baseada em red-black ordering)
+    if ((i + j + k) % 2 == 0) {
+        int idx = IX(i, j, k);
+        float div = 1.0f / c;
+        float old_x = x[idx];
+        
+        // Atualiza o valor de x[idx] com a fórmula dada
+        x[idx] = (x0[idx] +
+                  a * (x[idx - 1] + x[idx + 1] +
+                       x[idx - y] + x[idx + y] +
+                       x[idx - z] + x[idx + z])) * div;
+        
+        // Calcula a alteração e atualiza max_c de forma atômica
+        float change = fabsf(x[idx] - old_x);
+        atomicMaxFloat(max_c, change); // Atualiza max_c usando operação atômica
+    }
+
+}
+
+__global__ void black_lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, float *max_c) {
+    
+    int val = M + 2;
+    int val2 = N + 2;
+    float div = 1/c;
+    int y = M + 2;
+    int z = (M + 2) * (N + 2);
+
+    // Índices globais baseados em thread e bloco
+    int i = blockIdx.x * blockDim.x + threadIdx.x + 1; // Garante que começa em 1
+    int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
+    int k = blockIdx.z * blockDim.z + threadIdx.z + 1;
+
+    // Verifica se está dentro dos limites
+    if (i > M || j > N || k > O) return;
+
+    // Condição para elementos "black" (verificação baseada em red-black ordering)
+    if ((i + j + k) % 2 == 1) {
+        int idx = IX(i, j, k);
+        float div = 1.0f / c;
+        float old_x = x[idx];
+        
+        // Atualiza o valor de x[idx] com a fórmula dada
+        x[idx] = (x0[idx] +
+                  a * (x[idx - 1] + x[idx + 1] +
+                       x[idx - y] + x[idx + y] +
+                       x[idx - z] + x[idx + z])) * div;
+        
+        // Calcula a alteração e atualiza max_c de forma atômica
+        float change = fabsf(x[idx] - old_x);
+        atomicMaxFloat(max_c, change); // Atualiza max_c usando operação atômica
+    }
+}
