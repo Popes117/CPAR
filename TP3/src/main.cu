@@ -107,6 +107,9 @@ float sum_density() {
   int size = (M + 2) * (N + 2) * (O + 2);
   for (int i = 0; i < size; i++) {
     total_density += dens[i];
+    //if (dens[i] > 0.1f) {
+    //  printf("dens[%i]: %f\n", i, dens[i]);
+    //}
   }
   return total_density;
 }

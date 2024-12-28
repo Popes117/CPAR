@@ -255,18 +255,19 @@ __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0
     float divv = 1.0f / c;
     int y = M + 2;
     int z = (M + 2) * (N + 2);
+    int color = int(process_red);
 
     // Índices globais baseados em thread e bloco
-    int i = blockIdx.x * blockDim.x + threadIdx.x + 1; // Garante que começa em 1
-    int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
     int k = blockIdx.z * blockDim.z + threadIdx.z + 1;
+    int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
+    int i = 2 * (blockIdx.x * blockDim.x + threadIdx.x) + 1 + (j + k + color) % 2 ; // Garante que começa em 1
 
     // Verifica se está dentro dos limites
     if (i > M || j > N || k > O) return;
 
     // Determina o tipo de célula a ser processada com base na paridade de (i + j + k)
-    int cell_type = (i + j + k) % 2; 
-    if ((process_red && cell_type != 0) || (!process_red && cell_type != 1)) return;
+    //int cell_type = (i + j + k) % 2; 
+    //if ((process_red && cell_type != 0) || (!process_red && cell_type != 1)) return;
 
     int idx = IX(i, j, k);
     float old_x = x[idx];
@@ -294,7 +295,7 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
     // Configuração do grid e blocos
     dim3 blockDim(16, 16, 4);
     // Para a maneira do Artur, divide o M/2
-    dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
+    dim3 gridDim((M/2 + blockDim.x - 1) / blockDim.x,
                  (N + blockDim.y - 1) / blockDim.y,
                  (O + blockDim.z - 1) / blockDim.z);
 
@@ -316,12 +317,12 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
         //black_lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x_d, x0_d, a, c, d_max_c);
         //cudaDeviceSynchronize();
 
-        // Processa células vermelhas
-        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, d_max_c, true);
-        cudaDeviceSynchronize();
-
         // Processa células pretas
         lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, d_max_c, false);
+        cudaDeviceSynchronize();
+
+        // Processa células vermelhas
+        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, d_max_c, true);
         cudaDeviceSynchronize();
 
         // Copia `max_c` de volta para o host para verificação
@@ -395,7 +396,8 @@ void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float 
     float a = dt * diff * max * max;
     float *x_d, *x0_d;
     int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
-
+    float *copy = (float *)malloc(size);
+    memcpy(copy, x, size); 
     //lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
 
     cudaMalloc((void **)&x_d, size);
@@ -404,11 +406,29 @@ void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float 
     cudaMemcpy(x0_d, x0, size, cudaMemcpyHostToDevice);
 
     lin_solve_kernel(M, N, O, b, x_d, x0_d, a, 1 + 6 * a);
-    
+    cudaDeviceSynchronize();
+
     cudaMemcpy(x, x_d, size, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
     
     cudaFree(x_d);
     cudaFree(x0_d);
+
+    bool is_different = false;
+    for (int idx = 0; idx < (M + 2) * (N + 2) * (O + 2); idx++) {
+        if (x[idx] != copy[idx]) {
+            is_different = true;
+            break;
+        }
+    }
+
+    // Print the result
+    if (is_different){
+        printf("x is different from the copy after lin_solve.\n");
+    }
+    else {
+        printf("x is identical to the copy after lin_solve.\n");
+    }
 }
 
 // Advection step (uses velocity field to move quantities)
@@ -683,9 +703,11 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     cudaMemcpy(div_d, divv, size, cudaMemcpyHostToDevice); 
 
     lin_solve_kernel(M, N, O, 0, p_d, div_d, 1, 6);
+    cudaDeviceSynchronize();
 
     cudaMemcpy(p, p_d, size, cudaMemcpyDeviceToHost);  
-    
+    cudaDeviceSynchronize();
+
     cudaFree(p_d);
     cudaFree(div_d); 
 
