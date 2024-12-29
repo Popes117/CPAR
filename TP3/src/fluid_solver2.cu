@@ -57,6 +57,11 @@ void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt)
 
     // Sincronizar para garantir que o kernel tenha concluído a execução
     cudaDeviceSynchronize();
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA error after add_source_kernel launch: %s\n", cudaGetErrorString(err));
+    }
 }
 
 
@@ -380,13 +385,14 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
             }
         }
 
-        set_bnd(M, N, O, b, x);
+        //set_bnd(M, N, O, b, x);
 
-        //cudaMalloc((void **)&x_d, (M + 2) * (N + 2) * (O + 2) * sizeof(float));
-        //cudaMemcpy(x_d, x, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
-        //launch_set_bnd_kernel(M, N, O, b, x_d);
-        //cudaMemcpy(x, x_d, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
-        //cudaFree(x_d); 
+        cudaMalloc((void **)&x_d, (M + 2) * (N + 2) * (O + 2) * sizeof(float));
+        cudaMemcpy(x_d, x, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+        launch_set_bnd_kernel(M, N, O, b, x_d);
+        cudaMemcpy(x, x_d, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaFree(x_d); 
+
     } while (max_c > tol && ++l < 20);
 }
 
@@ -394,11 +400,15 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
 void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
     int max = MAX(MAX(M, N), O);
     float a = dt * diff * max * max;
+
+#if 0
+    lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
+#else
     float *x_d, *x0_d;
     int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
+
     float *copy = (float *)malloc(size);
     memcpy(copy, x, size); 
-    //lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
 
     cudaMalloc((void **)&x_d, size);
     cudaMalloc((void **)&x0_d, size);
@@ -413,7 +423,7 @@ void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float 
     
     cudaFree(x_d);
     cudaFree(x0_d);
-
+/*
     bool is_different = false;
     for (int idx = 0; idx < (M + 2) * (N + 2) * (O + 2); idx++) {
         if (x[idx] != copy[idx]) {
@@ -429,67 +439,12 @@ void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float 
     else {
         printf("x is identical to the copy after lin_solve.\n");
     }
+*/
+#endif
+
 }
 
-// Advection step (uses velocity field to move quantities)
-void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
-    float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
-    int val = M + 2;
-    int val2 = N + 2;
-    float *d_d;
-    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
-
-    for (int k = 1; k <= O; k++) {
-        for (int j = 1; j <= N; j++) {
-            for (int i = 1; i <= M; i++) {
-                int idx = IX(i, j, k);
-
-                float x = i - dtX * u[idx];
-                float y = j - dtY * v[idx];
-                float z = k - dtZ * w[idx];
-
-                // Optimized clamping using inline function
-                x = clamp(x, 0.5f, M + 0.5f);
-                y = clamp(y, 0.5f, N + 0.5f);
-                z = clamp(z, 0.5f, O + 0.5f);
-
-                int i0 = (int)x, i1 = i0 + 1;
-                int j0 = (int)y, j1 = j0 + 1;
-                int k0 = (int)z, k1 = k0 + 1;
-
-                float s1 = x - i0, s0 = 1 - s1;
-                float t1 = y - j0, t0 = 1 - t1;
-                float u1 = z - k0, u0 = 1 - u1;
-
-                // Direct access to array elements to improve performance
-                float d0_i0j0k0 = d0[IX(i0, j0, k0)];
-                float d0_i0j0k1 = d0[IX(i0, j0, k1)];
-                float d0_i0j1k0 = d0[IX(i0, j1, k0)];
-                float d0_i0j1k1 = d0[IX(i0, j1, k1)];
-                float d0_i1j0k0 = d0[IX(i1, j0, k0)];
-                float d0_i1j0k1 = d0[IX(i1, j0, k1)];
-                float d0_i1j1k0 = d0[IX(i1, j1, k0)];
-                float d0_i1j1k1 = d0[IX(i1, j1, k1)];
-
-                // 3D interpolation
-                d[idx] = s0 * (t0 * (u0 * d0_i0j0k0 + u1 * d0_i0j0k1) +
-                               t1 * (u0 * d0_i0j1k0 + u1 * d0_i0j1k1)) +
-                         s1 * (t0 * (u0 * d0_i1j0k0 + u1 * d0_i1j0k1) +
-                               t1 * (u0 * d0_i1j1k0 + u1 * d0_i1j1k1));
-            }
-        }
-    }
-
-    set_bnd(M, N, O, b, d);
-
-    //cudaMalloc((void **)&d_d, size);
-    //cudaMemcpy(d_d, d, size, cudaMemcpyHostToDevice);   
-    //launch_set_bnd_kernel(M, N, O, b, d_d);
-    //cudaMemcpy(d, d_d, size, cudaMemcpyDeviceToHost);
-    //cudaFree(d_d);
-}
-
-__global__ void advect_kernel(int M, int N, int O, int b, float *d, const float *d0, float *u, float *v, float *w, float dt) {
+__global__ void advect_kernel(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
 
     float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
     int val = M + 2;
@@ -541,7 +496,7 @@ __global__ void advect_kernel(int M, int N, int O, int b, float *d, const float 
 
 }
 
-void launch_advect_kernel(int M, int N, int O, int b, float *d, const float *d0, float *u, float *v, float *w, float dt) {
+void launch_advect_kernel(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
 
     float *d_d, *d0_d, *u_d, *v_d, *w_d;
     int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
@@ -566,7 +521,7 @@ void launch_advect_kernel(int M, int N, int O, int b, float *d, const float *d0,
     launch_set_bnd_kernel(M, N, O, b, d_d);
     
     cudaMemcpy(d, d_d, size, cudaMemcpyDeviceToHost);
-    cudaMemcpy(d0_d, d0, size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(d0, d0_d, size, cudaMemcpyDeviceToHost);
     cudaMemcpy(u, u_d, size, cudaMemcpyDeviceToHost);
     cudaMemcpy(v, v_d, size, cudaMemcpyDeviceToHost);
     cudaMemcpy(w, w_d, size, cudaMemcpyDeviceToHost);  
@@ -577,6 +532,68 @@ void launch_advect_kernel(int M, int N, int O, int b, float *d, const float *d0,
     cudaFree(v_d);
     cudaFree(w_d);    
 }   
+
+
+// Advection step (uses velocity field to move quantities)
+void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
+    float dtX = dt * M, dtY = dt * N, dtZ = dt * O;
+    int val = M + 2;
+    int val2 = N + 2;
+    float *d_d;
+    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
+#if 0
+    for (int k = 1; k <= O; k++) {
+        for (int j = 1; j <= N; j++) {
+            for (int i = 1; i <= M; i++) {
+                int idx = IX(i, j, k);
+
+                float x = i - dtX * u[idx];
+                float y = j - dtY * v[idx];
+                float z = k - dtZ * w[idx];
+
+                // Optimized clamping using inline function
+                x = clamp(x, 0.5f, M + 0.5f);
+                y = clamp(y, 0.5f, N + 0.5f);
+                z = clamp(z, 0.5f, O + 0.5f);
+
+                int i0 = (int)x, i1 = i0 + 1;
+                int j0 = (int)y, j1 = j0 + 1;
+                int k0 = (int)z, k1 = k0 + 1;
+
+                float s1 = x - i0, s0 = 1 - s1;
+                float t1 = y - j0, t0 = 1 - t1;
+                float u1 = z - k0, u0 = 1 - u1;
+
+                // Direct access to array elements to improve performance
+                float d0_i0j0k0 = d0[IX(i0, j0, k0)];
+                float d0_i0j0k1 = d0[IX(i0, j0, k1)];
+                float d0_i0j1k0 = d0[IX(i0, j1, k0)];
+                float d0_i0j1k1 = d0[IX(i0, j1, k1)];
+                float d0_i1j0k0 = d0[IX(i1, j0, k0)];
+                float d0_i1j0k1 = d0[IX(i1, j0, k1)];
+                float d0_i1j1k0 = d0[IX(i1, j1, k0)];
+                float d0_i1j1k1 = d0[IX(i1, j1, k1)];
+
+                // 3D interpolation
+                d[idx] = s0 * (t0 * (u0 * d0_i0j0k0 + u1 * d0_i0j0k1) +
+                               t1 * (u0 * d0_i0j1k0 + u1 * d0_i0j1k1)) +
+                         s1 * (t0 * (u0 * d0_i1j0k0 + u1 * d0_i1j0k1) +
+                               t1 * (u0 * d0_i1j1k0 + u1 * d0_i1j1k1));
+            }
+        }
+    }
+
+#else 
+
+    launch_advect_kernel(M, N, O, b, d, d0, u, v, w, dt);
+
+    cudaMalloc((void **)&d_d, size);
+    cudaMemcpy(d_d, d, size, cudaMemcpyHostToDevice);   
+    launch_set_bnd_kernel(M, N, O, b, d_d);
+    cudaMemcpy(d, d_d, size, cudaMemcpyDeviceToHost);
+    cudaFree(d_d);
+#endif 
+}
 
 __global__ void loop1_project_kernel(int M, int N, int O, float *u, float *v, float *w, float *p, float *div) {
     int val = M + 2;
@@ -630,11 +647,9 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     int max = MAX(M, MAX(N, O));
     float invMax = 1.0f / max;
     float *u_d, *v_d, *w_d, *p_d, *div_d;
-
-#if 0
-
-    float *u_d, *v_d, *w_d, *p_d, *div_d;
     int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
+
+#if 1
 
     cudaMalloc((void **)&u_d, size);
     cudaMalloc((void **)&v_d, size);
@@ -692,20 +707,25 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
       }
     }
 
-    set_bnd(M, N, O, 0, divv);
-    set_bnd(M, N, O, 0, p);
-    //lin_solve(M, N, O, 0, p, div, 1, 6);
-    
-    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
     cudaMalloc((void **)&p_d, size);
     cudaMalloc((void **)&div_d, size);
-    cudaMemcpy(p_d, p, size, cudaMemcpyHostToDevice);
-    cudaMemcpy(div_d, divv, size, cudaMemcpyHostToDevice); 
 
+    cudaMemcpy(p_d, p, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(div_d, divv, size, cudaMemcpyHostToDevice);  
+
+    launch_set_bnd_kernel(M, N, O, 0, div_d);
+    cudaDeviceSynchronize();
+    launch_set_bnd_kernel(M, N, O, 0, p_d);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(p, p_d, size, cudaMemcpyDeviceToHost);  
+    
     lin_solve_kernel(M, N, O, 0, p_d, div_d, 1, 6);
     cudaDeviceSynchronize();
 
     cudaMemcpy(p, p_d, size, cudaMemcpyDeviceToHost);  
+    // Talvez possa tirar este
+    cudaMemcpy(divv, div_d, size, cudaMemcpyDeviceToHost); 
     cudaDeviceSynchronize();
 
     cudaFree(p_d);
@@ -724,15 +744,53 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
       }
     }
 
-    set_bnd(M, N, O, 1, u);
-    set_bnd(M, N, O, 2, v);
-    set_bnd(M, N, O, 3, w);
+    cudaMalloc((void **)&u_d, size);
+    cudaMalloc((void **)&v_d, size);
+    cudaMalloc((void **)&w_d, size);
+
+    cudaMemcpy(u_d, u, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(v_d, v, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(w_d, w, size, cudaMemcpyHostToDevice);
+
+    launch_set_bnd_kernel(M, N, O, 1, u_d),
+    launch_set_bnd_kernel(M, N, O, 2, v_d);
+    launch_set_bnd_kernel(M, N, O, 3, w_d);
+
+    cudaMemcpy(u, u_d, size, cudaMemcpyDeviceToHost);  
+    cudaMemcpy(v, v_d, size, cudaMemcpyDeviceToHost);  
+    cudaMemcpy(w, w_d, size, cudaMemcpyDeviceToHost);  
+
+    cudaFree(u_d);
+    cudaFree(v_d);
+    cudaFree(w_d);
+    //set_bnd(M, N, O, 1, u);
+    //set_bnd(M, N, O, 2, v);
+    //set_bnd(M, N, O, 3, w);
 #endif
 }
 
 // Step function for density
 void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt) {
-  add_source(M, N, O, x, x0, dt);
+  float *x_d, *x0_d;
+  int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
+  
+  cudaMalloc((void **)&x_d, size);
+  cudaMalloc((void **)&x0_d, size);
+
+  cudaMemcpy(x_d, x, size, cudaMemcpyHostToDevice);
+  cudaMemcpy(x0_d, x0, size, cudaMemcpyHostToDevice);
+
+  launch_add_source_kernel(M, N, O, x_d, x0_d, dt);
+
+  cudaMemcpy(x, x_d, size, cudaMemcpyDeviceToHost);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+      printf("CUDA error: %s\n", cudaGetErrorString(err));
+  }
+  cudaFree(x_d);
+  cudaFree(x0_d);
+
+  //add_source(M, N, O, x, x0, dt);
   SWAP(x0, x);
   diffuse(M, N, O, 0, x, x0, diff, dt);
   SWAP(x0, x);
@@ -744,7 +802,9 @@ void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, floa
   // Define global values
   int val = M + 2;
   int val2 = N + 2;
-  
+  float *u_d, *v_d, *w_d, *u0_d, *v0_d, *w0_d;
+  int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
+
   ix000 = IX(0, 0, 0);
   ix100 = IX(1, 0, 0);
   ix010 = IX(0, 1, 0);
@@ -762,9 +822,42 @@ void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, floa
   ixm1n0 = IX(M + 1, N, 0);
   ixm1n11 = IX(M + 1, N + 1, 1);
 
-  add_source(M, N, O, u, u0, dt);
-  add_source(M, N, O, v, v0, dt);
-  add_source(M, N, O, w, w0, dt);
+  cudaMalloc((void **)&u_d, size);
+  cudaMalloc((void **)&v_d, size);
+  cudaMalloc((void **)&w_d, size);
+  cudaMalloc((void **)&u0_d, size);
+  cudaMalloc((void **)&v0_d, size);
+  cudaMalloc((void **)&w0_d, size);
+
+  cudaMemcpy(u_d, u, size, cudaMemcpyHostToDevice);
+  cudaMemcpy(v_d, v, size, cudaMemcpyHostToDevice);
+  cudaMemcpy(w_d, w, size, cudaMemcpyHostToDevice);
+  cudaMemcpy(u0_d, u0, size, cudaMemcpyHostToDevice);
+  cudaMemcpy(v0_d, v0, size, cudaMemcpyHostToDevice);  
+  cudaMemcpy(w0_d, w0, size, cudaMemcpyHostToDevice);
+
+  launch_add_source_kernel(M, N, O, u_d, u0_d, dt);
+  launch_add_source_kernel(M, N, O, v_d, v0_d, dt);
+  launch_add_source_kernel(M, N, O, w_d, w0_d, dt);
+
+  cudaMemcpy(u, u_d, size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(v, v_d, size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(w, w_d, size, cudaMemcpyDeviceToHost);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+      printf("CUDA error : %s\n", cudaGetErrorString(err));
+  }
+
+  cudaFree(u_d);
+  cudaFree(v_d);
+  cudaFree(w_d);
+  cudaFree(u0_d);
+  cudaFree(v0_d);
+  cudaFree(w0_d);
+
+  //add_source(M, N, O, u, u0, dt);
+  //add_source(M, N, O, v, v0, dt);
+  //add_source(M, N, O, w, w0, dt);
   SWAP(u0, u);
   diffuse(M, N, O, 1, u, u0, visc, dt);
   SWAP(v0, v);
@@ -776,6 +869,9 @@ void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, floa
   SWAP(v0, v);
   SWAP(w0, w);
   advect(M, N, O, 1, u, u0, u0, v0, w0, dt);
+  //if (err != cudaSuccess) {
+  //    printf("CUDA error : %s\n", cudaGetErrorString(err));
+  //}
   advect(M, N, O, 2, v, v0, u0, v0, w0, dt);
   advect(M, N, O, 3, w, w0, u0, v0, w0, dt);
   project(M, N, O, u, v, w, u0, v0);

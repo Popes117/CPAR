@@ -4,7 +4,7 @@
 #include <vector>
 #include <cuda.h>
 
-#define SIZE 84
+#define SIZE 168
 
 #define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
 
@@ -64,6 +64,17 @@ void clear_data() {
   }
 }
 
+void copy_data(){
+  cudaMemcpy(du, u, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(dv, v, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(dw, w, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(du_prev, u_prev, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(dv_prev, v_prev, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(dw_prev, w_prev, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(ddens, dens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(ddens_prev, dens_prev, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+}
+
 // Free allocated memory
 void free_data() {
   delete[] u;
@@ -103,6 +114,7 @@ void apply_events(const std::vector<Event> &events) {
 
 // Function to sum the total density
 float sum_density() {
+  cudaMemcpy(dens, ddens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
   float total_density = 0.0f;
   int size = (M + 2) * (N + 2) * (O + 2);
   for (int i = 0; i < size; i++) {
@@ -124,8 +136,8 @@ void simulate(EventManager &eventManager, int timesteps) {
     apply_events(events);
 
     // Perform the simulation steps
-    vel_step(M, N, O, u, v, w, u_prev, v_prev, w_prev, visc, dt);
-    dens_step(M, N, O, dens, dens_prev, u, v, w, diff, dt);
+    vel_step(M, N, O, du, dv, dw, du_prev, dv_prev, dw_prev, visc, dt);
+    dens_step(M, N, O, ddens, ddens_prev, du, dv, dw, diff, dt);
     std::cout << "Timestep " << t << std::endl;
   }
 }
@@ -142,7 +154,8 @@ int main() {
   if (!allocate_data())
     return -1;
   clear_data();
-
+  copy_data();
+  
   // Run simulation with events
   simulate(eventManager, timesteps);
 
