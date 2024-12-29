@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 #include <omp.h>
+#include <cstring>
 
 #define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1 dimensional (1D) index from 3D coordinates
 #define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}            //Swap two pointers
@@ -149,7 +150,7 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
 
         }
         set_bnd(M, N, O, b, x); 
-    } while (max_c > tol && ++l < 20);
+    } while (++l < 20);
 }
 
 
@@ -157,7 +158,22 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
 void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
     int max = MAX(MAX(M, N), O);
     float a = dt * diff * max * max;
+    int size = (M + 2) * (N + 2) * (O + 2);
+    float *copy = (float *)malloc(size * sizeof(float));
+    memcpy(copy, x, size * sizeof(float));    
     lin_solve(M, N, O, b, x, x0, a, 1 + 6 * a);
+
+    bool is_different = false;
+    for (int idx = 0; idx < size; idx++) {
+        if (x[idx] != copy[idx]) {
+            is_different = true;
+            break;
+        }
+    }
+
+    // Print the result
+    if (is_different)
+        printf("x is different from the copy after lin_solve.\n");
 }
 
 // Advection step (uses velocity field to move quantities)

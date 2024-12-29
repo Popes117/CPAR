@@ -4,7 +4,7 @@
 #include <vector>
 #include <cuda.h>
 
-#define SIZE 168
+#define SIZE 84
 
 #define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
 
@@ -62,9 +62,6 @@ void clear_data() {
     u[i] = v[i] = w[i] = u_prev[i] = v_prev[i] = w_prev[i] = dens[i] =
         dens_prev[i] = 0.0f;
   }
-}
-
-void copy_data(){
   cudaMemcpy(du, u, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(dv, v, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(dw, w, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
@@ -73,6 +70,20 @@ void copy_data(){
   cudaMemcpy(dw_prev, w_prev, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(ddens, dens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(ddens_prev, dens_prev, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+}
+
+void copy_data_to_device(){
+  cudaMemcpy(du, u, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(dv, v, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(dw, w, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(ddens, dens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
+}
+
+void copy_data_to_host(){
+  cudaMemcpy(u, du, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaMemcpy(v, dv, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaMemcpy(w, dw, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaMemcpy(dens, ddens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
 }
 
 // Free allocated memory
@@ -134,10 +145,12 @@ void simulate(EventManager &eventManager, int timesteps) {
 
     // Apply events to the simulation
     apply_events(events);
+    copy_data_to_device();
 
     // Perform the simulation steps
     vel_step(M, N, O, du, dv, dw, du_prev, dv_prev, dw_prev, visc, dt);
     dens_step(M, N, O, ddens, ddens_prev, du, dv, dw, diff, dt);
+    copy_data_to_host();
     std::cout << "Timestep " << t << std::endl;
   }
 }
@@ -154,8 +167,7 @@ int main() {
   if (!allocate_data())
     return -1;
   clear_data();
-  copy_data();
-  
+
   // Run simulation with events
   simulate(eventManager, timesteps);
 

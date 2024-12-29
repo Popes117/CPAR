@@ -82,9 +82,14 @@ float sum_density() {
   int size = (M + 2) * (N + 2) * (O + 2);
   for (int i = 0; i < size; i++) {
     total_density += dens[i];
+    //if (dens[i] > 0.1f) {
+    //  printf("dens[%i]: %f\n", i, dens[i]);
+    //}
   }
   return total_density;
 }
+
+// 432965 -> 1.390896 
 
 // Simulation loop
 void simulate(EventManager &eventManager, int timesteps) {
@@ -98,6 +103,7 @@ void simulate(EventManager &eventManager, int timesteps) {
     // Perform the simulation steps
     vel_step(M, N, O, u, v, w, u_prev, v_prev, w_prev, visc, dt);
     dens_step(M, N, O, dens, dens_prev, u, v, w, diff, dt);
+    std::cout << "Timestep " << t << std::endl;
   }
 }
 
