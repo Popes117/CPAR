@@ -3,4 +3,4 @@
 #SBATCH --partition=cpar
 #SBATCH --constraint=k20
 
-nvprof ./fluid_sim 
+time nvprof ./fluid_sim 

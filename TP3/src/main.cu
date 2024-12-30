@@ -4,7 +4,7 @@
 #include <vector>
 #include <cuda.h>
 
-#define SIZE 84
+#define SIZE 168
 
 #define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
 
@@ -106,21 +106,51 @@ void free_data() {
   cudaFree(ddens_prev);
 }
 
-// Apply events (source or force) for the current timestep
-void apply_events(const std::vector<Event> &events) {
-  int i = M / 2, j = N / 2, k = O / 2;
-  int idx = IX(i, j, k);
-  for (const auto &event : events) {
-    if (event.type == ADD_SOURCE) {
-      // Apply density source at the center of the grid
-      dens[idx] = event.density;
-    } else if (event.type == APPLY_FORCE) {
-      // Apply forces based on the event's vector (fx, fy, fz)
-      u[idx] = event.force.x;
-      v[idx] = event.force.y;
-      w[idx] = event.force.z;
+
+__global__ void apply_events_kernel(Event *events, int num_events, int center_idx, float *du, float *dv, float *dw, float *ddens) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Cada thread trata de um evento
+    if (idx < num_events) {
+        Event event = events[idx];
+
+        if (event.type == ADD_SOURCE) {
+            // Aplicar densidade no centro
+            ddens[center_idx] = event.density;
+        } else if (event.type == APPLY_FORCE) {
+            // Aplicar forças no centro
+            du[center_idx] = event.force.x;
+            dv[center_idx] = event.force.y;
+            dw[center_idx] = event.force.z;
+        }
     }
-  }
+}
+
+
+// Apply events (source or force) for the current timestep
+void apply_events(const std::vector<Event> &events,int idx, float *dens, float *u, float *v, float *w) {
+
+  int size = events.size();
+  Event *d_events;
+  cudaMalloc((void **)&d_events, size * sizeof(Event));
+  cudaMemcpy(d_events, events.data(), size * sizeof(Event), cudaMemcpyHostToDevice);
+  int threads_per_block = 256;
+  int blocks_per_grid = (size + threads_per_block - 1) / threads_per_block;
+
+  // Lançar o kernel
+  apply_events_kernel<<<blocks_per_grid, threads_per_block>>>(d_events, size, idx, u, v, w, dens);
+
+  //for (const auto &event : events) {
+  //  if (event.type == ADD_SOURCE) {
+  //    // Apply density source at the center of the grid
+  //    dens[idx] = event.density;
+  //  } else if (event.type == APPLY_FORCE) {
+  //    // Apply forces based on the event's vector (fx, fy, fz)
+  //    u[idx] = event.force.x;
+  //    v[idx] = event.force.y;
+  //    w[idx] = event.force.z;
+  //  }
+  //}
 }
 
 // Function to sum the total density
@@ -139,18 +169,21 @@ float sum_density() {
 
 // Simulation loop
 void simulate(EventManager &eventManager, int timesteps) {
+  int i = M / 2, j = N / 2, k = O / 2;
+  int idx = IX(i, j, k);
+
   for (int t = 0; t < timesteps; t++) {
     // Get the events for the current timestep
     std::vector<Event> events = eventManager.get_events_at_timestamp(t);
 
     // Apply events to the simulation
-    apply_events(events);
-    copy_data_to_device();
+    apply_events(events,idx, ddens, du, dv, dw);
+    //copy_data_to_device();
 
     // Perform the simulation steps
     vel_step(M, N, O, du, dv, dw, du_prev, dv_prev, dw_prev, visc, dt);
     dens_step(M, N, O, ddens, ddens_prev, du, dv, dw, diff, dt);
-    copy_data_to_host();
+    //copy_data_to_host();
     std::cout << "Timestep " << t << std::endl;
   }
 }

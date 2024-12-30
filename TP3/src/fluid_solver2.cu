@@ -41,10 +41,10 @@ void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt)
     // Sincronizar para garantir que o kernel tenha concluído a execução
     cudaDeviceSynchronize();
 
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA error after add_source_kernel launch: %s\n", cudaGetErrorString(err));
-    }
+    //cudaError_t err = cudaGetLastError();
+    //if (err != cudaSuccess) {
+    //    printf("CUDA error after add_source_kernel launch: %s\n", cudaGetErrorString(err));
+    //}
 }
 
 __global__ void set_bnd_kernel(
@@ -159,7 +159,7 @@ __device__ void atomicMaxFloatPrecise(float *address, float val) {
     }
 }
 
-__global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, float *max_c, bool process_red) {
+__global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, bool process_red, float *changes) {
     
     int val = M + 2;
     int val2 = N + 2;
@@ -186,18 +186,17 @@ __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0
                    x[idx - z] + x[idx + z])) * divv;
 
     // Calcula a alteração e atualiza max_c de forma atômica
-    float change = fabsf(x[idx] - old_x);
-    atomicMaxFloat(max_c, change); // Atualiza max_c usando operação atômica
+    changes[idx] = fabsf(x[idx] - old_x);
 }
 
 
 void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
     float tol = 1e-7, max_c;
     int l = 0;
-
+    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
+    float *changes_d;
+    cudaMalloc(&changes_d, size);
     // Aloca `max_c` em memória global no device
-    float *d_max_c;
-    cudaMalloc(&d_max_c, sizeof(float));
 
     // Configuração do grid e blocos
     dim3 blockDim(16, 16, 4);
@@ -208,29 +207,34 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
 
     do {
         max_c = 0.0f;
-        
-        // Inicializa `max_c` para 0.0f no host e copia para o device
-        cudaMemcpy(d_max_c, &max_c, sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemset(d_max_c, 0, sizeof(float)); // Inicializa `d_max_c` para 0 no dispositivo
+        cudaMemset(changes_d, 0, size);
 
         // Processa células pretas
-        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, d_max_c, false);
-        cudaDeviceSynchronize();
+        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, false, changes_d);
+        //cudaDeviceSynchronize();
+
+        cudaError_t err1 = cudaGetLastError();
+        if (err1 != cudaSuccess) {
+            printf("CUDA error depois do lin solve 1 : %s\n", cudaGetErrorString(err1));
+        }
 
         // Processa células vermelhas
-        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, d_max_c, true);
-        cudaDeviceSynchronize();
+        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, true, changes_d);
+        //cudaDeviceSynchronize();
+        cudaError_t err2 = cudaGetLastError();
+        if (err2 != cudaSuccess) {
+            printf("CUDA error depois do lin solve 2 : %s\n", cudaGetErrorString(err2));
+        }
 
-        // Copia `max_c` de volta para o host para verificação
-        cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
-        //std::cout << "max_c (host) antes da set_bnd : " << max_c << std::endl;
+        // TODO : Kernel que verifica o máximo do array `changes_d` e atualiza `max_c`
+
         // Atualiza os limites com o kernel `set_bnd`
         launch_set_bnd_kernel(M, N, O, b, x);
 
     } while (++l < 20);
 
     // Libera a memória alocada para `d_max_c`
-    cudaFree(d_max_c);
+    cudaFree(changes_d);
 }
 
 // Diffusion step (uses implicit method)
@@ -239,36 +243,36 @@ void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float 
     float a = dt * diff * max * max;
     int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
 
-    float *copy = (float *)malloc(size);
-    cudaMemcpy(copy, x, size, cudaMemcpyDeviceToHost);
+    //float *copy = (float *)malloc(size);
+    //cudaMemcpy(copy, x, size, cudaMemcpyDeviceToHost);
 
     lin_solve_kernel(M, N, O, b, x, x0, a, 1 + 6 * a);
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
 
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA error : %s\n", cudaGetErrorString(err));
-    }
+    //cudaError_t err = cudaGetLastError();
+    //if (err != cudaSuccess) {
+    //    printf("CUDA error : %s\n", cudaGetErrorString(err));
+    //}
 
-    float *x_h = (float *)malloc(size);
-    cudaMemcpy(x_h, x, size, cudaMemcpyDeviceToHost);
+    //float *x_h = (float *)malloc(size);
+    //cudaMemcpy(x_h, x, size, cudaMemcpyDeviceToHost);
 
     // Copy x to host
-    bool is_different = false;
-    for (int idx = 0; idx < (M + 2) * (N + 2) * (O + 2); idx++) {
-        if (x_h[idx] != copy[idx]) {
-            is_different = true;
-            break;
-        }
-    }
+    //bool is_different = false;
+    //for (int idx = 0; idx < (M + 2) * (N + 2) * (O + 2); idx++) {
+    //    if (x_h[idx] != copy[idx]) {
+    //        is_different = true;
+    //        break;
+    //    }
+    //}
 
     // Print the result
-    if (is_different){
-        printf("x is different from the copy after lin_solve.\n");
-    }
-    else {
-        printf("x is identical to the copy after lin_solve.\n");
-    }
+    //if (is_different){
+    //    printf("x is different from the copy after lin_solve.\n");
+    //}
+    //else {
+    //    printf("x is identical to the copy after lin_solve.\n");
+    //}
 
 }
 
@@ -403,7 +407,7 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     launch_set_bnd_kernel(M, N, O, 0, divv);
     launch_set_bnd_kernel(M, N, O, 0, p);
     lin_solve_kernel(M, N, O, 0, p, divv, 1, 6);
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -419,35 +423,13 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
 
 }
 
-__global__ void swap_arrays_kernel(float *x, float *x0, int size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        float temp = x[idx];
-        x[idx] = x0[idx];
-        x0[idx] = temp;
-    }
-}
-
-void swap_arrays(float *x, float *x0, int size) {
-    int threadsPerBlock = 1024;
-    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
-
-    swap_arrays_kernel<<<blocksPerGrid, threadsPerBlock>>>(x, x0, size);
-    cudaDeviceSynchronize(); // Garante que o kernel tenha terminado antes de continuar
-}
-
-
 // Step function for density
 void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt) {  
 
-  int size = (M + 2) * (N + 2) * (O + 2);
-
   launch_add_source_kernel(M, N, O, x, x0, dt); 
   SWAP(x0, x);
-  //swap_arrays(x0, x, size);
   diffuse(M, N, O, 0, x, x0, diff, dt);
   SWAP(x0, x);
-  //swap_arrays(x0, x, size);
   advect(M, N, O, 0, x, x0, u, v, w, dt);
 
 }
@@ -457,7 +439,6 @@ void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, floa
   // Define global values
   int val = M + 2;
   int val2 = N + 2;
-  int size = (M + 2) * (N + 2) * (O + 2);
   ix000 = IX(0, 0, 0);
   ix100 = IX(1, 0, 0);
   ix010 = IX(0, 1, 0);
@@ -480,21 +461,15 @@ void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, floa
   launch_add_source_kernel(M, N, O, w, w0, dt);
 
   SWAP(u0, u);
-  //swap_arrays(u0, u, size);
   diffuse(M, N, O, 1, u, u0, visc, dt);
   SWAP(v0, v);
-  //swap_arrays(v0, v, size);
   diffuse(M, N, O, 2, v, v0, visc, dt);
   SWAP(w0, w);
-  //swap_arrays(w0, w, size);
   diffuse(M, N, O, 3, w, w0, visc, dt);
   project(M, N, O, u, v, w, u0, v0);
   SWAP(u0, u);
-  //swap_arrays(u0, u, size);
   SWAP(v0, v);
-  //swap_arrays(v0, v, size);
   SWAP(w0, w);
-  //swap_arrays(w0, w, size);
   advect(M, N, O, 1, u, u0, u0, v0, w0, dt);
   //if (err != cudaSuccess) {
   //    printf("CUDA error : %s\n", cudaGetErrorString(err));
