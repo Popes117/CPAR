@@ -159,6 +159,56 @@ __device__ void atomicMaxFloatPrecise(float *address, float val) {
     }
 }
 
+__global__ void find_max_kernel(float *arr, float *max_result, int size) {
+    extern __shared__ float shared_max[];
+
+    // Índice global e local
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x;
+
+    // Inicializa a memória compartilhada
+    shared_max[tid] = (idx < size) ? arr[idx] : 0.0f;
+
+    __syncthreads();
+
+    // Redução paralela para encontrar o máximo
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            shared_max[tid] = fmaxf(shared_max[tid], shared_max[tid + stride]);
+        }
+        __syncthreads();
+    }
+
+    // O primeiro thread escreve o máximo encontrado na memória global
+    if (tid == 0) {
+        atomicMaxFloat(max_result, shared_max[0]);
+    }
+}
+
+float find_max(float *d_arr, int size) {
+    int threads_per_block = 256;
+    int blocks_per_grid = (size + threads_per_block - 1) / threads_per_block;
+
+    // Memória para armazenar o resultado máximo
+    float *d_max_result;
+    float h_max_result = 0.0f;
+
+    cudaMalloc(&d_max_result, sizeof(float));
+    cudaMemcpy(d_max_result, &h_max_result, sizeof(float), cudaMemcpyHostToDevice);
+
+    // Lançar o kernel
+    find_max_kernel<<<blocks_per_grid, threads_per_block, threads_per_block * sizeof(float)>>>(d_arr, d_max_result, size);
+
+    // Copiar o resultado de volta para a CPU
+    cudaMemcpy(&h_max_result, d_max_result, sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Liberar memória
+    cudaFree(d_max_result);
+
+    return h_max_result;
+}
+
+
 __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, bool process_red, float *changes) {
     
     int val = M + 2;
@@ -227,11 +277,11 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
         }
 
         // TODO : Kernel que verifica o máximo do array `changes_d` e atualiza `max_c`
-
+        max_c = find_max(changes_d, (M + 2) * (N + 2) * (O + 2));
         // Atualiza os limites com o kernel `set_bnd`
         launch_set_bnd_kernel(M, N, O, b, x);
 
-    } while (++l < 20);
+    } while (max_c > tol && ++l < 20);
 
     // Libera a memória alocada para `d_max_c`
     cudaFree(changes_d);

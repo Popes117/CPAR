@@ -72,20 +72,6 @@ void clear_data() {
   cudaMemcpy(ddens_prev, dens_prev, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
 }
 
-void copy_data_to_device(){
-  cudaMemcpy(du, u, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(dv, v, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(dw, w, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(ddens, dens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyHostToDevice);
-}
-
-void copy_data_to_host(){
-  cudaMemcpy(u, du, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
-  cudaMemcpy(v, dv, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
-  cudaMemcpy(w, dw, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
-  cudaMemcpy(dens, ddens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
-}
-
 // Free allocated memory
 void free_data() {
   delete[] u;
@@ -140,17 +126,8 @@ void apply_events(const std::vector<Event> &events,int idx, float *dens, float *
   // Lançar o kernel
   apply_events_kernel<<<blocks_per_grid, threads_per_block>>>(d_events, size, idx, u, v, w, dens);
 
-  //for (const auto &event : events) {
-  //  if (event.type == ADD_SOURCE) {
-  //    // Apply density source at the center of the grid
-  //    dens[idx] = event.density;
-  //  } else if (event.type == APPLY_FORCE) {
-  //    // Apply forces based on the event's vector (fx, fy, fz)
-  //    u[idx] = event.force.x;
-  //    v[idx] = event.force.y;
-  //    w[idx] = event.force.z;
-  //  }
-  //}
+  cudaFree(d_events);
+
 }
 
 // Function to sum the total density
@@ -178,12 +155,10 @@ void simulate(EventManager &eventManager, int timesteps) {
 
     // Apply events to the simulation
     apply_events(events,idx, ddens, du, dv, dw);
-    //copy_data_to_device();
 
     // Perform the simulation steps
     vel_step(M, N, O, du, dv, dw, du_prev, dv_prev, dw_prev, visc, dt);
     dens_step(M, N, O, ddens, ddens_prev, du, dv, dw, diff, dt);
-    //copy_data_to_host();
     std::cout << "Timestep " << t << std::endl;
   }
 }
