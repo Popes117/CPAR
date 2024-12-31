@@ -4,6 +4,7 @@
 #include <iostream>
 #include <omp.h>
 #include <cuda.h>
+#include <cfloat> 
 
 #define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k))  //Compute 1 dimensional (1D) index from 3D coordinates
 #define SWAP(x0, x){float *tmp = x0;x0 = x;x = tmp;}            //Swap two pointers
@@ -39,12 +40,8 @@ void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt)
     add_source_kernel<<<blocksPerGrid, threadsPerBlock>>>(M, N, O, x, s, dt);
 
     // Sincronizar para garantir que o kernel tenha concluído a execução
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
 
-    //cudaError_t err = cudaGetLastError();
-    //if (err != cudaSuccess) {
-    //    printf("CUDA error after add_source_kernel launch: %s\n", cudaGetErrorString(err));
-    //}
 }
 
 __global__ void set_bnd_kernel(
@@ -208,6 +205,68 @@ float find_max(float *d_arr, int size) {
     return h_max_result;
 }
 
+template <unsigned int blockSize>
+__global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
+    extern __shared__ float sdata[];
+
+    unsigned int tid = threadIdx.x;
+    unsigned int i = blockIdx.x * (blockSize * 2) + tid;
+    unsigned int gridSize = blockSize * 2 * gridDim.x;
+
+    // Inicializa memória compartilhada
+    sdata[tid] = -FLT_MAX;
+
+    // Carrega elementos para memória compartilhada
+    while (i < n) {
+        sdata[tid] = fmaxf(sdata[tid], g_idata[i]);
+        if (i + blockSize < n) {  // Garante que não acesse fora do limite
+            sdata[tid] = fmaxf(sdata[tid], g_idata[i + blockSize]);
+        }
+        i += gridSize;
+    }
+
+    __syncthreads();
+
+    // Redução em memória compartilhada
+    if (blockSize >= 512) { if (tid < 256) { sdata[tid] = fmaxf(sdata[tid], sdata[tid + 256]); } __syncthreads(); }
+    if (blockSize >= 256) { if (tid < 128) { sdata[tid] = fmaxf(sdata[tid], sdata[tid + 128]); } __syncthreads(); }
+    if (blockSize >= 128) { if (tid < 64)  { sdata[tid] = fmaxf(sdata[tid], sdata[tid + 64]);  } __syncthreads(); }
+
+    // Otimização para warps
+    if (tid < 32) {
+        if (blockSize >= 64) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 32]);
+        if (blockSize >= 32) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 16]);
+        if (blockSize >= 16) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 8]);
+        if (blockSize >= 8)  sdata[tid] = fmaxf(sdata[tid], sdata[tid + 4]);
+        if (blockSize >= 4)  sdata[tid] = fmaxf(sdata[tid], sdata[tid + 2]);
+        if (blockSize >= 2)  sdata[tid] = fmaxf(sdata[tid], sdata[tid + 1]);
+    }
+
+    // Escreve o resultado do bloco na memória global
+    if (tid == 0) {
+        g_odata[blockIdx.x] = sdata[0];
+    }
+}
+
+void launch_max_reduce(float *d_idata, float *d_odata, unsigned int n) {
+    const unsigned int blockSize = 512; // Pode ajustar para diferentes GPUs
+    const unsigned int gridSize = (n + blockSize * 2 - 1) / (blockSize * 2);
+
+    // Aloca memória para a saída da redução
+    float *d_intermediate;
+    cudaMalloc(&d_intermediate, gridSize * sizeof(float));
+
+    // Lança o kernel
+    max_reduce<blockSize><<<gridSize, blockSize, blockSize * sizeof(float)>>>(d_idata, d_intermediate, n);
+    cudaDeviceSynchronize();
+    // Reduz o resultado dos blocos em um único valor
+    float h_result;
+    max_reduce<blockSize><<<1, blockSize, blockSize * sizeof(float)>>>(d_intermediate, d_odata, gridSize);
+    cudaDeviceSynchronize();
+
+    cudaFree(d_intermediate);
+}
+
 
 __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, bool process_red, float *changes) {
     
@@ -244,13 +303,13 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
     float tol = 1e-7, max_c;
     int l = 0;
     int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
-    float *changes_d;
+    float *changes_d, *d_max_c;
+
     cudaMalloc(&changes_d, size);
-    // Aloca `max_c` em memória global no device
+    cudaMalloc(&d_max_c, sizeof(float));
 
     // Configuração do grid e blocos
     dim3 blockDim(16, 16, 4);
-    // Para a maneira do Artur, divide o M/2
     dim3 gridDim((M/2 + blockDim.x - 1) / blockDim.x,
                  (N + blockDim.y - 1) / blockDim.y,
                  (O + blockDim.z - 1) / blockDim.z);
@@ -261,20 +320,16 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
 
         // Processa células pretas
         lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, false, changes_d);
-        //cudaDeviceSynchronize();
-
-        cudaError_t err1 = cudaGetLastError();
-        if (err1 != cudaSuccess) {
-            printf("CUDA error depois do lin solve 1 : %s\n", cudaGetErrorString(err1));
-        }
 
         // Processa células vermelhas
         lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, true, changes_d);
+
+        // Calcula o valor máximo em `changes_d`
+        //launch_max_reduce(changes_d, d_max_c, (M + 2) * (N + 2) * (O + 2));
         //cudaDeviceSynchronize();
-        cudaError_t err2 = cudaGetLastError();
-        if (err2 != cudaSuccess) {
-            printf("CUDA error depois do lin solve 2 : %s\n", cudaGetErrorString(err2));
-        }
+
+        // Copia o resultado para o host
+        //cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
 
         // TODO : Kernel que verifica o máximo do array `changes_d` e atualiza `max_c`
         max_c = find_max(changes_d, (M + 2) * (N + 2) * (O + 2));
@@ -289,40 +344,10 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
 
 // Diffusion step (uses implicit method)
 void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
+    
     int max = MAX(MAX(M, N), O);
     float a = dt * diff * max * max;
-    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
-
-    //float *copy = (float *)malloc(size);
-    //cudaMemcpy(copy, x, size, cudaMemcpyDeviceToHost);
-
     lin_solve_kernel(M, N, O, b, x, x0, a, 1 + 6 * a);
-    //cudaDeviceSynchronize();
-
-    //cudaError_t err = cudaGetLastError();
-    //if (err != cudaSuccess) {
-    //    printf("CUDA error : %s\n", cudaGetErrorString(err));
-    //}
-
-    //float *x_h = (float *)malloc(size);
-    //cudaMemcpy(x_h, x, size, cudaMemcpyDeviceToHost);
-
-    // Copy x to host
-    //bool is_different = false;
-    //for (int idx = 0; idx < (M + 2) * (N + 2) * (O + 2); idx++) {
-    //    if (x_h[idx] != copy[idx]) {
-    //        is_different = true;
-    //        break;
-    //    }
-    //}
-
-    // Print the result
-    //if (is_different){
-    //    printf("x is different from the copy after lin_solve.\n");
-    //}
-    //else {
-    //    printf("x is identical to the copy after lin_solve.\n");
-    //}
 
 }
 
@@ -459,11 +484,6 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     lin_solve_kernel(M, N, O, 0, p, divv, 1, 6);
     //cudaDeviceSynchronize();
 
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA error : %s\n", cudaGetErrorString(err));
-    }
-
     loop2_project_kernel<<<gridDim, blockDim>>>(M, N, O, u, v, w, p);
     cudaDeviceSynchronize();
 
@@ -521,9 +541,6 @@ void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, floa
   SWAP(v0, v);
   SWAP(w0, w);
   advect(M, N, O, 1, u, u0, u0, v0, w0, dt);
-  //if (err != cudaSuccess) {
-  //    printf("CUDA error : %s\n", cudaGetErrorString(err));
-  //}
   advect(M, N, O, 2, v, v0, u0, v0, w0, dt);
   advect(M, N, O, 3, w, w0, u0, v0, w0, dt);
   project(M, N, O, u, v, w, u0, v0);
