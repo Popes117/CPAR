@@ -39,9 +39,6 @@ void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt)
     // Chamada ao kernel
     add_source_kernel<<<blocksPerGrid, threadsPerBlock>>>(M, N, O, x, s, dt);
 
-    // Sincronizar para garantir que o kernel tenha concluído a execução
-    //cudaDeviceSynchronize();
-
 }
 
 __global__ void set_bnd_kernel(
@@ -213,7 +210,7 @@ float find_max(float *d_arr, int size) {
 
     // Lançar o kernel
     find_max_kernel<<<blocks_per_grid, threads_per_block, threads_per_block * sizeof(float)>>>(d_arr, d_max_result, size);
-    
+
     // Copiar o resultado de volta para a CPU
     cudaMemcpy(&h_max_result, d_max_result, sizeof(float), cudaMemcpyDeviceToHost);
 
@@ -243,6 +240,16 @@ __global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
         i += gridSize;
     }
 
+    //float temp_max = -FLT_MAX;
+    //while (i < n) {
+    //    temp_max = fmaxf(temp_max, g_idata[i]);
+    //    if (i + blockSize < n) {  
+    //        temp_max = fmaxf(temp_max, g_idata[i + blockSize]);
+    //    }
+    //    i += gridSize;
+    //}
+    //sdata[tid] = temp_max;
+
     __syncthreads();
 
     // Redução em memória compartilhada
@@ -250,14 +257,14 @@ __global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
     if (blockSize >= 256) { if (tid < 128) { sdata[tid] = fmaxf(sdata[tid], sdata[tid + 128]); } __syncthreads(); }
     if (blockSize >= 128) { if (tid < 64)  { sdata[tid] = fmaxf(sdata[tid], sdata[tid + 64]);  } __syncthreads(); }
 
-    // Otimização para warps
     if (tid < 32) {
-        if (blockSize >= 64) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 32]);
-        if (blockSize >= 32) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 16]);
-        if (blockSize >= 16) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 8]);
-        if (blockSize >= 8)  sdata[tid] = fmaxf(sdata[tid], sdata[tid + 4]);
-        if (blockSize >= 4)  sdata[tid] = fmaxf(sdata[tid], sdata[tid + 2]);
-        if (blockSize >= 2)  sdata[tid] = fmaxf(sdata[tid], sdata[tid + 1]);
+        volatile float *vshared = sdata;
+        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 32]);
+        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 16]);
+        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 8]);
+        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 4]);
+        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 2]);
+        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 1]);
     }
 
     // Escreve o resultado do bloco na memória global
@@ -276,113 +283,35 @@ void launch_max_reduce(float *d_idata, float *d_odata, unsigned int n) {
 
     // Lança o kernel
     max_reduce<blockSize><<<gridSize, blockSize, blockSize * sizeof(float)>>>(d_idata, d_intermediate, n);
-    cudaDeviceSynchronize();
+
     // Reduz o resultado dos blocos em um único valor
-    float h_result;
     max_reduce<blockSize><<<1, blockSize, blockSize * sizeof(float)>>>(d_intermediate, d_odata, gridSize);
-    cudaDeviceSynchronize();
 
     cudaFree(d_intermediate);
 }
 
-#if 0
-template <unsigned int blockSize>
-__global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, bool process_red, float *max_c) {
-    extern __shared__ float sdata[];
-    int val = M + 2;
-    int val2 = N + 2;
-    float divv = 1.0f / c;
-    int y = M + 2;
-    int z = (M + 2) * (N + 2);
-    int color = int(process_red);
+float find_max2(float *changes_d, int n){
 
-    // Índices globais baseados em thread e bloco
-    unsigned int tid = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * blockDim.x * blockDim.y;
-    int k = blockIdx.z * blockDim.z + threadIdx.z + 1;
-    int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
-    int i = 2 * (blockIdx.x * blockDim.x + threadIdx.x) + 1 + (j + k + color) % 2 ; // Garante que começa em 1
+    float max_value;
+    int num_blocks = (n + 511) / 512;
+    float *d_intermediate;
 
-    // Verifica se está dentro dos limites
-    if (i > M || j > N || k > O){sdata[tid] = -FLT_MAX; return;}
+    cudaMalloc(&d_intermediate, num_blocks * sizeof(float));
 
-    int idx = IX(i, j, k);
-    float old_x = x[idx];
-
-    // Atualiza o valor de x[idx] com a fórmula dada
-    x[idx] = (x0[idx] +
-              a * (x[idx - 1] + x[idx + 1] +
-                   x[idx - y] + x[idx + y] +
-                   x[idx - z] + x[idx + z])) * divv;
-
-    // Calcula a alteração e atualiza max_c de forma atômica
-    float change = fabsf(x[idx] - old_x);
-    sdata[tid] = change;
-    
-    __syncthreads();
-
-    // Redução paralela usando templates
-    if (blockSize >= 512) { if (tid < 256) { sdata[tid] = fmaxf(sdata[tid], sdata[tid + 256]); } __syncthreads(); }
-    if (blockSize >= 256) { if (tid < 128) { sdata[tid] = fmaxf(sdata[tid], sdata[tid + 128]); } __syncthreads(); }
-    if (blockSize >= 128) { if (tid < 64) { sdata[tid] = fmaxf(sdata[tid], sdata[tid + 64]); } __syncthreads(); }
-    if (tid < 32) {
-        if (blockSize >= 64) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 32]);
-        if (blockSize >= 32) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 16]);
-        if (blockSize >= 16) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 8]);
-        if (blockSize >= 8) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 4]);
-        if (blockSize >= 4) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 2]);
-        if (blockSize >= 2) sdata[tid] = fmaxf(sdata[tid], sdata[tid + 1]);
+    max_reduce<512><<<num_blocks, 512, 512 * sizeof(float)>>>(changes_d, d_intermediate, n);
+    // Reduzir os resultados intermediários até que reste apenas um bloco
+    while(num_blocks > 1){
+        int num_blocks_next = (num_blocks + 511) / 512;
+        max_reduce<512><<<num_blocks_next, 512, 512 * sizeof(float)>>>(d_intermediate, d_intermediate, num_blocks);
+        num_blocks = num_blocks_next;
     }
 
-    if (tid == 0) {
-        atomicMaxFloat(max_c, sdata[0]);
-    }
+    cudaMemcpy(&max_value, d_intermediate, sizeof(float), cudaMemcpyDeviceToHost);
+    cudaFree(d_intermediate);
+
+    return max_value;
+
 }
-
-
-void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
-    float tol = 1e-7, max_c;
-    int l = 0;
-    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
-    float *changes_d, *d_max_c;
-
-    //cudaMalloc(&changes_d, size);
-    cudaMalloc(&d_max_c, sizeof(float));
-
-    // Configuração do grid e blocos
-    dim3 blockDim(16, 16, 4);
-    dim3 gridDim((M/2 + blockDim.x - 1) / blockDim.x,
-                 (N + blockDim.y - 1) / blockDim.y,
-                 (O + blockDim.z - 1) / blockDim.z);
-
-    do {
-        max_c = 0.0f;
-        // cudaMemset(changes_d, 0, size);
-        cudaMemcpy(d_max_c, &max_c, sizeof(float), cudaMemcpyHostToDevice);
-
-        // Processa células pretas
-        lin_solve_kernel<512><<<gridDim, blockDim, blockDim.x * blockDim.y * blockDim.z * sizeof(float)>>>(M, N, O, b, x, x0, a, c, false, d_max_c);
-
-        // Processa células vermelhas
-        lin_solve_kernel<512><<<gridDim, blockDim, blockDim.x * blockDim.y * blockDim.z * sizeof(float)>>>(M, N, O, b, x, x0, a, c, true, d_max_c);
-
-        // Calcula o valor máximo em `changes_d`
-        //launch_max_reduce(changes_d, d_max_c, (M + 2) * (N + 2) * (O + 2));
-        //cudaDeviceSynchronize();
-
-        // Copia o resultado para o host
-        cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
-
-        // TODO : Kernel que verifica o máximo do array `changes_d` e atualiza `max_c`
-        //max_c = find_max(changes_d, (M + 2) * (N + 2) * (O + 2));
-        // Atualiza os limites com o kernel `set_bnd`
-        launch_set_bnd_kernel(M, N, O, b, x);
-
-    } while (max_c > tol && ++l < 20);
-
-    // Libera a memória alocada para `d_max_c`
-    cudaFree(d_max_c);
-}
-#else 
 
 __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, bool process_red, float *changes) {
     
@@ -441,14 +370,11 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
         lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, true, changes_d);
 
         // Calcula o valor máximo em `changes_d`
-        //launch_max_reduce(changes_d, d_max_c, (M + 2) * (N + 2) * (O + 2));
-        //cudaDeviceSynchronize();
+        launch_max_reduce(changes_d, d_max_c, (M + 2) * (N + 2) * (O + 2));
 
         // Copia o resultado para o host
-        //cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
 
-        // TODO : Kernel que verifica o máximo do array `changes_d` e atualiza `max_c`
-        max_c = find_max(changes_d, (M + 2) * (N + 2) * (O + 2));
         // Atualiza os limites com o kernel `set_bnd`
         launch_set_bnd_kernel(M, N, O, b, x);
 
@@ -457,7 +383,6 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
     // Libera a memória alocada para `d_max_c`
     cudaFree(changes_d);
 }
-#endif 
 
 // Diffusion step (uses implicit method)
 void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
