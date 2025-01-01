@@ -29,6 +29,19 @@ __global__ void add_source_kernel(int M, int N, int O, float *x, float *s, float
     }
 }
 
+__global__ void add_source_kernel_optimized(int M, int N, int O, float *x, float *s, float dt) {
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+
+    // Tamanho total da grade
+    int size = (M + 2) * (N + 2) * (O + 2);
+
+    // Processar múltiplos elementos por thread
+    int stride = blockDim.x * gridDim.x;
+    for (int i = idx; i < size; i += stride) {
+        x[i] += dt * s[i];
+    }
+}
+
 void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt) {
     int size = (M + 2) * (N + 2) * (O + 2);
 
@@ -37,8 +50,7 @@ void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt)
     int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
 
     // Chamada ao kernel
-    add_source_kernel<<<blocksPerGrid, threadsPerBlock>>>(M, N, O, x, s, dt);
-
+    add_source_kernel_optimized<<<blocksPerGrid, threadsPerBlock>>>(M, N, O, x, s, dt);
 }
 
 __global__ void set_bnd_kernel(

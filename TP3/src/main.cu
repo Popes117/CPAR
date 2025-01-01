@@ -130,6 +130,8 @@ void apply_events(const std::vector<Event> &events,int idx, float *dens, float *
 
 }
 
+#if 0
+
 template <unsigned int blockSize>
 __global__ void reduce_sum_density(float *g_idata, float *g_odata, unsigned int n) {
     extern __shared__ float sdata[];  // Memória compartilhada
@@ -199,18 +201,19 @@ float sum_density(float *ddens, int size) {
     return total_density;
 }
 
+#else
 
-// Function to sum the total density
-//float sum_density() {
-//  cudaMemcpy(dens, ddens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
-//  float total_density = 0.0f;
-//  int size = (M + 2) * (N + 2) * (O + 2);
-//  for (int i = 0; i < size; i++) {
-//    total_density += dens[i];
-//  }
-//  return total_density;
-//}
-
+//Function to sum the total density
+float sum_density() {
+  cudaMemcpy(dens, ddens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
+  float total_density = 0.0f;
+  int size = (M + 2) * (N + 2) * (O + 2);
+  for (int i = 0; i < size; i++) {
+    total_density += dens[i];
+  }
+  return total_density;
+}
+#endif 
 // Simulation loop
 void simulate(EventManager &eventManager, int timesteps) {
   int i = M / 2, j = N / 2, k = O / 2;
@@ -247,7 +250,8 @@ int main() {
   simulate(eventManager, timesteps);
 
   // Print total density at the end of simulation
-  float total_density = sum_density(ddens, (M + 2) * (N + 2) * (O + 2));
+  //float total_density = sum_density(ddens, (M + 2) * (N + 2) * (O + 2));
+  float total_density = sum_density();
   std::cout << "Total density after " << timesteps
             << " timesteps: " << total_density << std::endl;
 
