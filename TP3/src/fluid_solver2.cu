@@ -50,7 +50,7 @@ void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt)
     int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
 
     // Chamada ao kernel
-    add_source_kernel_optimized<<<blocksPerGrid, threadsPerBlock>>>(M, N, O, x, s, dt);
+    add_source_kernel<<<blocksPerGrid, threadsPerBlock>>>(M, N, O, x, s, dt);
 }
 
 __global__ void set_bnd_kernel(
@@ -157,81 +157,6 @@ __device__ float atomicMaxFloat(float *address, float value) {
     return __int_as_float(old); // Retorna o valor máximo final como float
 }
 
-__device__ void atomicMaxFloatPrecise(float *address, float val) {
-    float old = *address;  // Lê o valor atual
-    while (val > old) {    // Continua enquanto o novo valor for maior
-        float assumed = old;
-        old = atomicCAS((int *)address, __float_as_int(assumed), __float_as_int(val));
-    }
-}
-
-__global__ void find_max_kernel(float *arr, float *max_result, int size) {
-    extern __shared__ float shared_max[];
-
-    // Índice global e local
-    unsigned int idx = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
-    int tid = threadIdx.x;
-
-    // Inicializa a memória compartilhada com o máximo de dois elementos consecutivos
-    if (idx < size) {
-        float val1 = arr[idx];
-        float val2 = (idx + blockDim.x < size) ? arr[idx + blockDim.x] : 0.0f;
-        shared_max[tid] = fmaxf(val1, val2);
-    } else {
-        shared_max[tid] = 0.0f;
-    }
-
-    __syncthreads();
-
-    // Redução paralela para encontrar o máximo
-    for (int stride = blockDim.x / 2; stride > 32; stride >>= 1) {
-        if (tid < stride) {
-            shared_max[tid] = fmaxf(shared_max[tid], shared_max[tid + stride]);
-        }
-        __syncthreads();
-    }
-
-    // Redução dentro de um warp (warp-synchronous)
-    if (tid < 32) {
-        volatile float *vshared = shared_max; // Evita leitura de memória global
-        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 32]);
-        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 16]);
-        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 8]);
-        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 4]);
-        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 2]);
-        vshared[tid] = fmaxf(vshared[tid], vshared[tid + 1]);
-    }
-
-    // Escreve o resultado máximo
-    if (tid == 0) {
-        atomicMaxFloat(max_result, shared_max[0]);
-    }
-}
-
-
-float find_max(float *d_arr, int size) {
-    int threads_per_block = 256;
-    int blocks_per_grid = (size + threads_per_block - 1) / threads_per_block;
-
-    // Memória para armazenar o resultado máximo
-    float *d_max_result;
-    float h_max_result = 0.0f;
-
-    cudaMalloc(&d_max_result, sizeof(float));
-    cudaMemcpy(d_max_result, &h_max_result, sizeof(float), cudaMemcpyHostToDevice);
-
-    // Lançar o kernel
-    find_max_kernel<<<blocks_per_grid, threads_per_block, threads_per_block * sizeof(float)>>>(d_arr, d_max_result, size);
-
-    // Copiar o resultado de volta para a CPU
-    cudaMemcpy(&h_max_result, d_max_result, sizeof(float), cudaMemcpyDeviceToHost);
-
-    // Liberar memória
-    cudaFree(d_max_result);
-
-    return h_max_result;
-}
-
 template <unsigned int blockSize>
 __global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
     extern __shared__ float sdata[];
@@ -243,6 +168,8 @@ __global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
     // Inicializa memória compartilhada
     sdata[tid] = -FLT_MAX;
 
+#if 1
+
     // Carrega elementos para memória compartilhada
     while (i < n) {
         sdata[tid] = fmaxf(sdata[tid], g_idata[i]);
@@ -252,15 +179,25 @@ __global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
         i += gridSize;
     }
 
-    //float temp_max = -FLT_MAX;
-    //while (i < n) {
-    //    temp_max = fmaxf(temp_max, g_idata[i]);
-    //    if (i + blockSize < n) {  
-    //        temp_max = fmaxf(temp_max, g_idata[i + blockSize]);
-    //    }
-    //    i += gridSize;
-    //}
-    //sdata[tid] = temp_max;
+#else
+
+    // Carrega múltiplos elementos por thread
+    while (i < n) {
+        float local_max = -FLT_MAX;
+
+        // Cada thread processa `num_elements_per_thread` elementos consecutivos
+        for (int j = 0; j < 8 && (i + j < n); ++j) {
+            local_max = fmaxf(local_max, g_idata[i + j]);
+        }
+
+        // Reduz o resultado local na memória compartilhada
+        sdata[tid] = fmaxf(sdata[tid], local_max);
+
+        // Avança para o próximo conjunto de elementos
+        i += gridSize;
+    }
+
+#endif
 
     __syncthreads();
 
@@ -285,44 +222,15 @@ __global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
     }
 }
 
-void launch_max_reduce(float *d_idata, float *d_odata, unsigned int n) {
+void launch_max_reduce(float *d_idata, float *d_odata, float *d_intermediate, unsigned int n) {
     const unsigned int blockSize = 512; // Pode ajustar para diferentes GPUs
     const unsigned int gridSize = (n + blockSize * 2 - 1) / (blockSize * 2);
-
-    // Aloca memória para a saída da redução
-    float *d_intermediate;
-    cudaMalloc(&d_intermediate, gridSize * sizeof(float));
 
     // Lança o kernel
     max_reduce<blockSize><<<gridSize, blockSize, blockSize * sizeof(float)>>>(d_idata, d_intermediate, n);
 
     // Reduz o resultado dos blocos em um único valor
     max_reduce<blockSize><<<1, blockSize, blockSize * sizeof(float)>>>(d_intermediate, d_odata, gridSize);
-
-    cudaFree(d_intermediate);
-}
-
-float find_max2(float *changes_d, int n){
-
-    float max_value;
-    int num_blocks = (n + 511) / 512;
-    float *d_intermediate;
-
-    cudaMalloc(&d_intermediate, num_blocks * sizeof(float));
-
-    max_reduce<512><<<num_blocks, 512, 512 * sizeof(float)>>>(changes_d, d_intermediate, n);
-    // Reduzir os resultados intermediários até que reste apenas um bloco
-    while(num_blocks > 1){
-        int num_blocks_next = (num_blocks + 511) / 512;
-        max_reduce<512><<<num_blocks_next, 512, 512 * sizeof(float)>>>(d_intermediate, d_intermediate, num_blocks);
-        num_blocks = num_blocks_next;
-    }
-
-    cudaMemcpy(&max_value, d_intermediate, sizeof(float), cudaMemcpyDeviceToHost);
-    cudaFree(d_intermediate);
-
-    return max_value;
-
 }
 
 __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, bool process_red, float *changes) {
@@ -356,24 +264,18 @@ __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0
 }
 
 
-void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c) {
+void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, float *changes_d, float *d_max_c, float *d_intermediate) {
     float tol = 1e-7, max_c;
     int l = 0;
-    int size = (M + 2) * (N + 2) * (O + 2) * sizeof(float);
-    float *changes_d, *d_max_c;
-
-    cudaMalloc(&changes_d, size);
-    cudaMalloc(&d_max_c, sizeof(float));
 
     // Configuração do grid e blocos
-    dim3 blockDim(16, 16, 4);
+    dim3 blockDim(16, 4, 4);
     dim3 gridDim((M/2 + blockDim.x - 1) / blockDim.x,
                  (N + blockDim.y - 1) / blockDim.y,
                  (O + blockDim.z - 1) / blockDim.z);
 
     do {
         max_c = 0.0f;
-        cudaMemset(changes_d, 0, size);
 
         // Processa células pretas
         lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, false, changes_d);
@@ -382,26 +284,23 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
         lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, true, changes_d);
 
         // Calcula o valor máximo em `changes_d`
-        launch_max_reduce(changes_d, d_max_c, (M + 2) * (N + 2) * (O + 2));
+        launch_max_reduce(changes_d, d_max_c, d_intermediate, (M + 2) * (N + 2) * (O + 2));
 
         // Copia o resultado para o host
         cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
 
-        // Atualiza os limites com o kernel `set_bnd`
         launch_set_bnd_kernel(M, N, O, b, x);
 
     } while (max_c > tol && ++l < 20);
 
-    // Libera a memória alocada para `d_max_c`
-    cudaFree(changes_d);
 }
 
 // Diffusion step (uses implicit method)
-void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt) {
+void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt, float *changes_d, float *d_max_c, float *d_intermediate) {
     
     int max = MAX(MAX(M, N), O);
     float a = dt * diff * max * max;
-    lin_solve_kernel(M, N, O, b, x, x0, a, 1 + 6 * a);
+    lin_solve_kernel(M, N, O, b, x, x0, a, 1 + 6 * a, changes_d, d_max_c, d_intermediate);
 
 }
 
@@ -459,10 +358,10 @@ __global__ void advect_kernel(int M, int N, int O, int b, float *d, float *d0, f
 
 void launch_advect_kernel(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
 
-    dim3 blockDim(16, 16, 4);
-    dim3 gridDim((M + 2 + blockDim.x - 1) / blockDim.x,
-                   (N + 2 + blockDim.y - 1) / blockDim.y,
-                   (O + 2 + blockDim.z - 1) / blockDim.z);
+    dim3 blockDim(16, 4, 4);
+    dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
+                   (N + blockDim.y - 1) / blockDim.y,
+                   (O + blockDim.z - 1) / blockDim.z);
     advect_kernel<<<gridDim,blockDim>>>(M, N, O, b, d, d0, u, v, w, dt);
     launch_set_bnd_kernel(M, N, O, b, d);
     
@@ -522,24 +421,21 @@ __global__ void loop2_project_kernel(int M, int N, int O, float *u, float *v, fl
     w[idx] -= 0.5f * (p[idx + z] - p[idx - z]);
 }
 
-void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *divv) {
+void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *divv, float *changes_d, float *d_max_c, float *d_intermediate) {
     int max = MAX(M, MAX(N, O));
     float invMax = 1.0f / max;
 
-    dim3 blockDim(16, 16, 4);
+    dim3 blockDim(16, 4, 4);
     dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
                    (N + blockDim.y - 1) / blockDim.y,
                    (O + blockDim.z - 1) / blockDim.z);
     loop1_project_kernel<<<gridDim, blockDim>>>(M, N, O, u, v, w, p, divv);
-    cudaDeviceSynchronize();
 
     launch_set_bnd_kernel(M, N, O, 0, divv);
     launch_set_bnd_kernel(M, N, O, 0, p);
-    lin_solve_kernel(M, N, O, 0, p, divv, 1, 6);
-    //cudaDeviceSynchronize();
+    lin_solve_kernel(M, N, O, 0, p, divv, 1, 6, changes_d, d_max_c, d_intermediate);
 
     loop2_project_kernel<<<gridDim, blockDim>>>(M, N, O, u, v, w, p);
-    cudaDeviceSynchronize();
 
     launch_set_bnd_kernel(M, N, O, 1, u),
     launch_set_bnd_kernel(M, N, O, 2, v);
@@ -548,18 +444,20 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
 }
 
 // Step function for density
-void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt) {  
+void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt, 
+                                                    float *changes_d, float *d_max_c, float *d_intermediate) {  
 
   launch_add_source_kernel(M, N, O, x, x0, dt); 
   SWAP(x0, x);
-  diffuse(M, N, O, 0, x, x0, diff, dt);
+  diffuse(M, N, O, 0, x, x0, diff, dt, changes_d, d_max_c, d_intermediate);
   SWAP(x0, x);
   advect(M, N, O, 0, x, x0, u, v, w, dt);
 
 }
 
 // Step function for velocity
-void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, float *v0, float *w0, float visc, float dt) {
+void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, float *v0, float *w0, float visc, float dt, 
+                                                                float *changes_d, float *d_max_c, float *d_intermediate) {
   // Define global values
   int val = M + 2;
   int val2 = N + 2;
@@ -585,17 +483,17 @@ void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, floa
   launch_add_source_kernel(M, N, O, w, w0, dt);
 
   SWAP(u0, u);
-  diffuse(M, N, O, 1, u, u0, visc, dt);
+  diffuse(M, N, O, 1, u, u0, visc, dt, changes_d, d_max_c, d_intermediate);
   SWAP(v0, v);
-  diffuse(M, N, O, 2, v, v0, visc, dt);
+  diffuse(M, N, O, 2, v, v0, visc, dt, changes_d, d_max_c, d_intermediate);
   SWAP(w0, w);
-  diffuse(M, N, O, 3, w, w0, visc, dt);
-  project(M, N, O, u, v, w, u0, v0);
+  diffuse(M, N, O, 3, w, w0, visc, dt, changes_d, d_max_c, d_intermediate);
+  project(M, N, O, u, v, w, u0, v0, changes_d, d_max_c, d_intermediate);
   SWAP(u0, u);
   SWAP(v0, v);
   SWAP(w0, w);
   advect(M, N, O, 1, u, u0, u0, v0, w0, dt);
   advect(M, N, O, 2, v, v0, u0, v0, w0, dt);
   advect(M, N, O, 3, w, w0, u0, v0, w0, dt);
-  project(M, N, O, u, v, w, u0, v0);
+  project(M, N, O, u, v, w, u0, v0, changes_d, d_max_c, d_intermediate);
 }

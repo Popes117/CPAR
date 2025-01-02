@@ -15,14 +15,14 @@ run:
 	$(CPP) $(CXXFLAGS) $(SRCS2) -o fluid_sim
 	sbatch ./cuda.sh
 
-168fluid2:
+168:
 	$(CPP) $(CXXFLAGS) $(SRCS3) -o fluid_sim
 	sbatch ./cuda.sh
 
-168fluid1:
-	$(CPP) $(CXXFLAGS) $(SRCS) -o fluid_sim
-	sbatch ./cuda.sh
+mem_check:
+	$(CPP) $(CXXFLAGS) $(SRCS3) -o fluid_sim
+	sbatch ./cuda_mem_check.sh
 
-fast:
+Ofast:
 	$(CPP) $(COFASTFLAGS) $(SRCS3) -o fluid_sim
 	sbatch ./cuda.sh

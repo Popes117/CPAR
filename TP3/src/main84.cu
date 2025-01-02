@@ -26,11 +26,14 @@ static float *dens, *dens_prev;
 float *du, *dv, *dw;
 float *du_prev, *dv_prev, *dw_prev;
 float *ddens, *ddens_prev;
+float *changes_d, *d_max_c, *d_intermediate;
 
 // Function to allocate simulation data
 int allocate_data() {
   int size = (M + 2) * (N + 2) * (O + 2);
   int bytes = size * sizeof(float);
+  const unsigned int blockSize = 512; // Pode ajustar para diferentes GPUs
+  const unsigned int gridSize = (size + blockSize * 2 - 1) / (blockSize * 2);
   u = new float[size];
   v = new float[size];
   w = new float[size];
@@ -47,6 +50,10 @@ int allocate_data() {
   cudaMalloc((void **)&dw_prev, bytes);
   cudaMalloc((void **)&ddens, bytes);
   cudaMalloc((void **)&ddens_prev, bytes);
+  cudaMalloc((void **)&changes_d, bytes);
+  cudaMalloc((void **)&d_max_c, sizeof(float));
+  cudaMalloc((void **)&d_intermediate, gridSize * sizeof(float));
+
 
   if (!u || !v || !w || !u_prev || !v_prev || !w_prev || !dens || !dens_prev) {
     std::cerr << "Cannot allocate memory" << std::endl;
@@ -90,59 +97,125 @@ void free_data() {
   cudaFree(dw_prev);
   cudaFree(ddens);
   cudaFree(ddens_prev);
+  cudaFree(changes_d);
+  cudaFree(d_max_c);
+  cudaFree(d_intermediate);
 }
 
 
-__global__ void apply_events_kernel(Event *events, int num_events, int center_idx, float *du, float *dv, float *dw, float *ddens) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    // Cada thread trata de um evento
-    if (idx < num_events) {
-        Event event = events[idx];
-
-        if (event.type == ADD_SOURCE) {
-            // Aplicar densidade no centro
-            ddens[center_idx] = event.density;
-        } else if (event.type == APPLY_FORCE) {
-            // Aplicar forças no centro
-            du[center_idx] = event.force.x;
-            dv[center_idx] = event.force.y;
-            dw[center_idx] = event.force.z;
+__global__ void apply_events_kernel(const Event *events, int num_events, float *u, float *v, float *w, float *dens, int idx) {
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        for (int e = 0; e < num_events; e++) {
+            Event event = events[e];
+            if (event.type == ADD_SOURCE) {
+                dens[idx] = event.density;
+            } else if (event.type == APPLY_FORCE) {
+                u[idx] = event.force.x;
+                v[idx] = event.force.y;
+                w[idx] = event.force.z;
+            }
         }
     }
 }
 
-
-// Apply events (source or force) for the current timestep
-void apply_events(const std::vector<Event> &events,int idx, float *dens, float *u, float *v, float *w) {
-
+// Função principal para gerenciar transferência e execução
+void apply_events(const std::vector<Event> &events, int idx, float *dens, float *u, float *v, float *w) {
   int size = events.size();
+  if (size == 0) return;
   Event *d_events;
   cudaMalloc((void **)&d_events, size * sizeof(Event));
   cudaMemcpy(d_events, events.data(), size * sizeof(Event), cudaMemcpyHostToDevice);
-  int threads_per_block = 256;
-  int blocks_per_grid = (size + threads_per_block - 1) / threads_per_block;
 
   // Lançar o kernel
-  apply_events_kernel<<<blocks_per_grid, threads_per_block>>>(d_events, size, idx, u, v, w, dens);
+  apply_events_kernel<<<1, 1>>>(d_events, size, u, v, w, dens, idx);
 
   cudaFree(d_events);
 }
 
-// Function to sum the total density
+#if 0
+
+template <unsigned int blockSize>
+__global__ void reduce_sum_density(float *g_idata, float *g_odata, unsigned int n) {
+    extern __shared__ float sdata[];  // Memória compartilhada
+    unsigned int tid = threadIdx.x;
+    unsigned int i = blockIdx.x * (blockSize * 2) + tid;
+    unsigned int gridSize = blockSize * 2 * gridDim.x;
+
+    // Inicializa memória compartilhada
+    sdata[tid] = 0;
+
+    // Soma os elementos atribuídos ao thread
+    while (i < n) {
+        sdata[tid] += g_idata[i];
+        if (i + blockSize < n) {
+            sdata[tid] += g_idata[i + blockSize];
+        }
+        i += gridSize;  // Incrementa para processar elementos restantes
+    }
+    __syncthreads();
+
+    // Redução em memória compartilhada
+    if (blockSize >= 512) { if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads(); }
+    if (blockSize >= 256) { if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads(); }
+    if (blockSize >= 128) { if (tid < 64) { sdata[tid] += sdata[tid + 64]; } __syncthreads(); }
+
+    if (tid < 32) {
+        volatile float *vshared = sdata; // Evita leitura de memória global
+        vshared[tid] += vshared[tid + 32];
+        vshared[tid] += vshared[tid + 16];
+        vshared[tid] += vshared[tid + 8];
+        vshared[tid] += vshared[tid + 4];
+        vshared[tid] += vshared[tid + 2];
+        vshared[tid] += vshared[tid + 1];
+    }
+
+    // Escreve o resultado parcial na memória global
+    if (tid == 0) g_odata[blockIdx.x] = sdata[0];
+}
+
+float sum_density(float *ddens, int size) {
+    const int threadsPerBlock = 512;  // Ajustável dependendo do hardware
+    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
+
+    // Alocar memória para resultados intermediários
+    float *d_intermediate;
+    cudaMalloc(&d_intermediate, blocksPerGrid * sizeof(float));
+
+    // Soma total
+    float total_density = 0.0f;
+
+    // Primeira chamada ao kernel
+    reduce_sum_density<512><<<blocksPerGrid, threadsPerBlock, threadsPerBlock * sizeof(float)>>>(ddens, d_intermediate, size);
+
+    // Reduzir iterativamente até restar um único bloco
+    while (blocksPerGrid > 1) {
+        int newBlocksPerGrid = (blocksPerGrid + threadsPerBlock - 1) / threadsPerBlock;
+        reduce_sum_density<512><<<newBlocksPerGrid, threadsPerBlock, threadsPerBlock * sizeof(float)>>>(d_intermediate, d_intermediate, blocksPerGrid);
+        blocksPerGrid = newBlocksPerGrid;
+    }
+
+    // Copiar o resultado final para o host
+    cudaMemcpy(&total_density, d_intermediate, sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Liberar memória
+    cudaFree(d_intermediate);
+
+    return total_density;
+}
+
+#else
+
+//Function to sum the total density
 float sum_density() {
   cudaMemcpy(dens, ddens, (M + 2) * (N + 2) * (O + 2) * sizeof(float), cudaMemcpyDeviceToHost);
   float total_density = 0.0f;
   int size = (M + 2) * (N + 2) * (O + 2);
   for (int i = 0; i < size; i++) {
     total_density += dens[i];
-    //if (dens[i] > 0.1f) {
-    //  printf("dens[%i]: %f\n", i, dens[i]);
-    //}
   }
   return total_density;
 }
-
+#endif 
 // Simulation loop
 void simulate(EventManager &eventManager, int timesteps) {
   int i = M / 2, j = N / 2, k = O / 2;
@@ -156,8 +229,8 @@ void simulate(EventManager &eventManager, int timesteps) {
     apply_events(events,idx, ddens, du, dv, dw);
 
     // Perform the simulation steps
-    vel_step(M, N, O, du, dv, dw, du_prev, dv_prev, dw_prev, visc, dt);
-    dens_step(M, N, O, ddens, ddens_prev, du, dv, dw, diff, dt);
+    vel_step(M, N, O, du, dv, dw, du_prev, dv_prev, dw_prev, visc, dt, changes_d, d_max_c, d_intermediate);
+    dens_step(M, N, O, ddens, ddens_prev, du, dv, dw, diff, dt, changes_d, d_max_c, d_intermediate);
     std::cout << "Timestep " << t << std::endl;
   }
 }
@@ -179,6 +252,7 @@ int main() {
   simulate(eventManager, timesteps);
 
   // Print total density at the end of simulation
+  //float total_density = sum_density(ddens, (M + 2) * (N + 2) * (O + 2));
   float total_density = sum_density();
   std::cout << "Total density after " << timesteps
             << " timesteps: " << total_density << std::endl;
