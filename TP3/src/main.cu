@@ -28,7 +28,7 @@ float *changes_d, *d_max_c, *d_intermediate;
 int allocate_data() {
   int size = (M + 2) * (N + 2) * (O + 2);
   int bytes = size * sizeof(float);
-  const unsigned int blockSize = 256; 
+  const unsigned int blockSize = 128; 
   const unsigned int gridSize = (size + blockSize * 2 - 1) / (blockSize * 2);
   u = new float[size];
   v = new float[size];

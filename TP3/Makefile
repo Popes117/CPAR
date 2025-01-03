@@ -29,3 +29,7 @@ time_check:
 Ofast:
 	$(CPP) $(COFASTFLAGS) $(SRCS) -o fluid_sim
 	sbatch ./cuda.sh
+
+tests:
+	$(CPP) $(CXXFLAGS) $(SRCS) -o fluid_sim
+	sbatch --partition day --constraint=k20 --ntasks=1 --time=5:00 ./cuda.sh

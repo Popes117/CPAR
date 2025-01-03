@@ -34,7 +34,8 @@ void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt)
     int size = (M + 2) * (N + 2) * (O + 2);
 
     // Configuração de threads e blocos
-    int threadsPerBlock = 256;
+    // MUDA AQUI TMB
+    int threadsPerBlock = 128;
     int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
 
     // Chamada ao kernel
@@ -118,6 +119,7 @@ __global__ void set_bnd_kernel(
 
 void launch_set_bnd_kernel(int M, int N, int O, int b, float *x) {
 
+    //MUDA AQUI TMB
     dim3 blockDim(16, 16);
     dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
                    (N + blockDim.y - 1) / blockDim.y);
@@ -175,7 +177,9 @@ __global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
 }
 
 void launch_max_reduce(float *d_idata, float *d_odata, float *d_intermediate, unsigned int n) {
-    const unsigned int blockSize = 256; 
+    
+    //MUDA AQUI TMB
+    const unsigned int blockSize = 128; 
     const unsigned int gridSize = (n + blockSize * 2 - 1) / (blockSize * 2);
 
     // Lança o kernel
@@ -220,7 +224,8 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
     float tol = 1e-7, max_c;
     int l = 0;
 
-    dim3 blockDim(16, 4, 4);
+    //TROCA AQUI TMB
+    dim3 blockDim(16, 4, 2);
     dim3 gridDim((M/2 + blockDim.x - 1) / blockDim.x,
                  (N + blockDim.y - 1) / blockDim.y,
                  (O + blockDim.z - 1) / blockDim.z);
@@ -304,7 +309,8 @@ __global__ void advect_kernel(int M, int N, int O, int b, float *d, float *d0, f
 
 void launch_advect_kernel(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
 
-    dim3 blockDim(16, 4, 4);
+    // MUDA AQUI TMB
+    dim3 blockDim(16, 4, 2);
     dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
                    (N + blockDim.y - 1) / blockDim.y,
                    (O + blockDim.z - 1) / blockDim.z);
@@ -368,7 +374,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     int max = MAX(M, MAX(N, O));
     float invMax = 1.0f / max;
 
-    dim3 blockDim(16, 4, 4);
+    // MUDA AQUI TMB
+    dim3 blockDim(16, 4, 2);
     dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
                    (N + blockDim.y - 1) / blockDim.y,
                    (O + blockDim.z - 1) / blockDim.z);
