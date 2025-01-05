@@ -23,6 +23,7 @@ float *du, *dv, *dw;
 float *du_prev, *dv_prev, *dw_prev;
 float *ddens, *ddens_prev;
 float *changes_d, *d_max_c, *d_intermediate;
+bool *converged_d;
 
 // Function to allocate simulation data
 int allocate_data() {
@@ -49,6 +50,7 @@ int allocate_data() {
   cudaMalloc((void **)&changes_d, bytes);
   cudaMalloc((void **)&d_max_c, sizeof(float));
   cudaMalloc((void **)&d_intermediate, gridSize * sizeof(float));
+  cudaMalloc((void **)&converged_d, sizeof(bool));
 
 
   if (!u || !v || !w || !u_prev || !v_prev || !w_prev || !dens || !dens_prev) {
@@ -96,6 +98,7 @@ void free_data() {
   cudaFree(changes_d);
   cudaFree(d_max_c);
   cudaFree(d_intermediate);
+  cudaFree(converged_d);
 }
 
 __global__ void apply_events_kernel(const Event *events, int num_events, float *u, float *v, float *w, float *dens, int idx) {
@@ -151,8 +154,8 @@ void simulate(EventManager &eventManager, int timesteps) {
     apply_events(events,idx, ddens, du, dv, dw);
 
     // Perform the simulation steps
-    vel_step(M, N, O, du, dv, dw, du_prev, dv_prev, dw_prev, visc, dt, changes_d, d_max_c, d_intermediate);
-    dens_step(M, N, O, ddens, ddens_prev, du, dv, dw, diff, dt, changes_d, d_max_c, d_intermediate);
+    vel_step(M, N, O, du, dv, dw, du_prev, dv_prev, dw_prev, visc, dt, changes_d, d_max_c, d_intermediate, converged_d);
+    dens_step(M, N, O, ddens, ddens_prev, du, dv, dw, diff, dt, changes_d, d_max_c, d_intermediate, converged_d);
   }
 }
 

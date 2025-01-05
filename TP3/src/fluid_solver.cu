@@ -34,7 +34,6 @@ void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt)
     int size = (M + 2) * (N + 2) * (O + 2);
 
     // Configuração de threads e blocos
-    // MUDA AQUI TMB
     int threadsPerBlock = 128;
     int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
 
@@ -119,7 +118,6 @@ __global__ void set_bnd_kernel(
 
 void launch_set_bnd_kernel(int M, int N, int O, int b, float *x) {
 
-    //MUDA AQUI TMB
     dim3 blockDim(16, 16);
     dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
                    (N + blockDim.y - 1) / blockDim.y);
@@ -178,7 +176,6 @@ __global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
 
 void launch_max_reduce(float *d_idata, float *d_odata, float *d_intermediate, unsigned int n) {
     
-    //MUDA AQUI TMB
     const unsigned int blockSize = 128; 
     const unsigned int gridSize = (n + blockSize * 2 - 1) / (blockSize * 2);
 
@@ -189,7 +186,7 @@ void launch_max_reduce(float *d_idata, float *d_odata, float *d_intermediate, un
     max_reduce<blockSize><<<1, blockSize, blockSize * sizeof(float)>>>(d_intermediate, d_odata, gridSize);
 }
 
-__global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, bool process_red, float *changes) {
+__global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, bool process_red, float *changes, bool *d_converged, float tol) {
     
     int val = M + 2;
     int val2 = N + 2;
@@ -216,15 +213,20 @@ __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0
                    x[idx - z] + x[idx + z])) * divv;
 
     // Calcula a alteração e atualiza max_c de forma atómica
-    changes[idx] = fabsf(x[idx] - old_x);
+    //changes[idx] = fabsf(x[idx] - old_x);
+    if (fabs(x[idx] - old_x) > tol)
+      *d_converged = false;
+    
 }
 
 
-void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, float *changes_d, float *d_max_c, float *d_intermediate) {
+void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, float c, float *changes_d, float *d_max_c, 
+                                                                                    float *d_intermediate, bool *converged_d) {
+    
     float tol = 1e-7, max_c;
     int l = 0;
+    bool converged_h;
 
-    //TROCA AQUI TMB
     dim3 blockDim(16, 4, 2);
     dim3 gridDim((M/2 + blockDim.x - 1) / blockDim.x,
                  (N + blockDim.y - 1) / blockDim.y,
@@ -232,31 +234,36 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
 
     do {
         max_c = 0.0f;
+        converged_h = true;
+        cudaMemset(converged_d, true, sizeof(bool));
 
         // Processa células pretas
-        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, false, changes_d);
+        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, false, changes_d, converged_d, tol);
 
         // Processa células vermelhas
-        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, true, changes_d);
+        lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, true, changes_d, converged_d, tol);
 
         // Calcula o valor máximo em `changes_d`
-        launch_max_reduce(changes_d, d_max_c, d_intermediate, (M + 2) * (N + 2) * (O + 2));
+        //launch_max_reduce(changes_d, d_max_c, d_intermediate, (M + 2) * (N + 2) * (O + 2));
 
         // Copia o resultado para o host
-        cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
+        //cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(&converged_h, converged_d, sizeof(bool), cudaMemcpyDeviceToHost);
 
         launch_set_bnd_kernel(M, N, O, b, x);
 
-    } while (max_c > tol && ++l < 20);
-
+    //} while (max_c > tol && ++l < 20);
+    } while (!converged_h && ++l < 20);
 }
 
 // Diffusion step (uses implicit method)
-void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt, float *changes_d, float *d_max_c, float *d_intermediate) {
+void diffuse(int M, int N, int O, int b, float *x, float *x0, float diff, float dt, float *changes_d, 
+                                                float *d_max_c, float *d_intermediate, bool *converged_d) {
     
     int max = MAX(MAX(M, N), O);
     float a = dt * diff * max * max;
-    lin_solve_kernel(M, N, O, b, x, x0, a, 1 + 6 * a, changes_d, d_max_c, d_intermediate);
+    lin_solve_kernel(M, N, O, b, x, x0, a, 1 + 6 * a, changes_d, d_max_c, d_intermediate, converged_d);
 
 }
 
@@ -309,7 +316,6 @@ __global__ void advect_kernel(int M, int N, int O, int b, float *d, float *d0, f
 
 void launch_advect_kernel(int M, int N, int O, int b, float *d, float *d0, float *u, float *v, float *w, float dt) {
 
-    // MUDA AQUI TMB
     dim3 blockDim(16, 4, 2);
     dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
                    (N + blockDim.y - 1) / blockDim.y,
@@ -329,6 +335,7 @@ void advect(int M, int N, int O, int b, float *d, float *d0, float *u, float *v,
 }
 
 __global__ void loop1_project_kernel(int M, int N, int O, float *u, float *v, float *w, float *p, float *div) {
+    
     int val = M + 2;
     int val2 = N + 2;
     int y = M + 2;
@@ -350,6 +357,7 @@ __global__ void loop1_project_kernel(int M, int N, int O, float *u, float *v, fl
 }
 
 __global__ void loop2_project_kernel(int M, int N, int O, float *u, float *v, float *w, float *p) {
+    
     int val = M + 2;
     int val2 = N + 2;
     int y = M + 2;
@@ -370,7 +378,9 @@ __global__ void loop2_project_kernel(int M, int N, int O, float *u, float *v, fl
     w[idx] -= 0.5f * (p[idx + z] - p[idx - z]);
 }
 
-void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *divv, float *changes_d, float *d_max_c, float *d_intermediate) {
+void project(int M, int N, int O, float *u, float *v, float *w, float *p, float *divv, 
+                float *changes_d, float *d_max_c, float *d_intermediate, bool *converged_d) {
+    
     int max = MAX(M, MAX(N, O));
     float invMax = 1.0f / max;
 
@@ -383,7 +393,7 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
 
     launch_set_bnd_kernel(M, N, O, 0, divv);
     launch_set_bnd_kernel(M, N, O, 0, p);
-    lin_solve_kernel(M, N, O, 0, p, divv, 1, 6, changes_d, d_max_c, d_intermediate);
+    lin_solve_kernel(M, N, O, 0, p, divv, 1, 6, changes_d, d_max_c, d_intermediate, converged_d);
 
     loop2_project_kernel<<<gridDim, blockDim>>>(M, N, O, u, v, w, p);
 
@@ -395,11 +405,11 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
 
 // Step function for density
 void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, float *w, float diff, float dt, 
-                                                    float *changes_d, float *d_max_c, float *d_intermediate) {  
+                                    float *changes_d, float *d_max_c, float *d_intermediate, bool *converged_d) {  
 
   launch_add_source_kernel(M, N, O, x, x0, dt); 
   SWAP(x0, x);
-  diffuse(M, N, O, 0, x, x0, diff, dt, changes_d, d_max_c, d_intermediate);
+  diffuse(M, N, O, 0, x, x0, diff, dt, changes_d, d_max_c, d_intermediate, converged_d);
   SWAP(x0, x);
   advect(M, N, O, 0, x, x0, u, v, w, dt);
 
@@ -407,7 +417,7 @@ void dens_step(int M, int N, int O, float *x, float *x0, float *u, float *v, flo
 
 // Step function for velocity
 void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, float *v0, float *w0, float visc, float dt, 
-                                                                float *changes_d, float *d_max_c, float *d_intermediate) {
+                                                float *changes_d, float *d_max_c, float *d_intermediate, bool *converged_d) {
   // Define global values
   int val = M + 2;
   int val2 = N + 2;
@@ -433,17 +443,17 @@ void vel_step(int M, int N, int O, float *u, float *v, float *w, float *u0, floa
   launch_add_source_kernel(M, N, O, w, w0, dt);
 
   SWAP(u0, u);
-  diffuse(M, N, O, 1, u, u0, visc, dt, changes_d, d_max_c, d_intermediate);
+  diffuse(M, N, O, 1, u, u0, visc, dt, changes_d, d_max_c, d_intermediate, converged_d);
   SWAP(v0, v);
-  diffuse(M, N, O, 2, v, v0, visc, dt, changes_d, d_max_c, d_intermediate);
+  diffuse(M, N, O, 2, v, v0, visc, dt, changes_d, d_max_c, d_intermediate, converged_d);
   SWAP(w0, w);
-  diffuse(M, N, O, 3, w, w0, visc, dt, changes_d, d_max_c, d_intermediate);
-  project(M, N, O, u, v, w, u0, v0, changes_d, d_max_c, d_intermediate);
+  diffuse(M, N, O, 3, w, w0, visc, dt, changes_d, d_max_c, d_intermediate, converged_d);
+  project(M, N, O, u, v, w, u0, v0, changes_d, d_max_c, d_intermediate, converged_d);
   SWAP(u0, u);
   SWAP(v0, v);
   SWAP(w0, w);
   advect(M, N, O, 1, u, u0, u0, v0, w0, dt);
   advect(M, N, O, 2, v, v0, u0, v0, w0, dt);
   advect(M, N, O, 3, w, w0, u0, v0, w0, dt);
-  project(M, N, O, u, v, w, u0, v0, changes_d, d_max_c, d_intermediate);
+  project(M, N, O, u, v, w, u0, v0, changes_d, d_max_c, d_intermediate, converged_d);
 }
