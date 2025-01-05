@@ -41,6 +41,7 @@ void set_bnd(int M, int N, int O, int b, float *x) {
   auto first_index = IX(0, 1, 1);
   auto last_index = IX(0, 1, O);
   int idx = IX(0,1,O + 1);
+  int y = M + 2;
   
   // Set boundary on faces
   for (j = 1; j <= N; j++) {
@@ -50,10 +51,10 @@ void set_bnd(int M, int N, int O, int b, float *x) {
       x[index + i] = neg_mask * first_value;
       x[idx + i] = neg_mask * last_value;
     }
-    index += 86;
-    first_index += 86;
-    last_index += 86;
-    idx += 86;
+    index += y;
+    first_index += y;
+    last_index += y;
+    idx += y;
   }
 
   // Mask for b == 1 in the second loop (x-axis)
@@ -71,10 +72,10 @@ void set_bnd(int M, int N, int O, int b, float *x) {
           x[index + i] = neg_mask * first_value;
           x[idx] = neg_mask * last_value;
       }
-      index += 86;
-      first_index += 86;
-      last_index += 86;
-      idx += 86;
+      index += y;
+      first_index += y;
+      last_index += y;
+      idx += y;
   }
 
   // Mask for b == 2 in the third loop (y-axis)
@@ -111,7 +112,9 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
     int val = M + 2;
     int val2 = N + 2;
     float div = 1/c;
-    
+    int y = M + 2;
+    int z = (M + 2) * (N + 2);
+
     do {
         max_c = 0.0f;
         #pragma omp parallel 
@@ -124,8 +127,8 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                       float old_x = x[idx];
                       x[idx] = (x0[idx] +
                                 a * (x[idx - 1] + x[idx + 1] +
-                                     x[idx - 86] + x[idx + 86] +
-                                     x[idx - 7396] + x[idx + 7396])) * div;
+                                     x[idx - y] + x[idx + y] +
+                                     x[idx - z] + x[idx + z])) * div;
                       float change = fabs(x[idx] - old_x);
                       if (change > max_c) max_c = change;
                   }
@@ -140,8 +143,8 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                       float old_x = x[idx];
                       x[idx] = (x0[idx] +
                                 a * (x[idx - 1] + x[idx + 1] +
-                                     x[idx - 86] + x[idx + 86] +
-                                     x[idx - 7396] + x[idx + 7396])) * div;
+                                     x[idx - y] + x[idx + y] +
+                                     x[idx - z] + x[idx + z])) * div;
                       float change = fabs(x[idx] - old_x);
                       if (change > max_c) max_c = change;
                   }
@@ -220,6 +223,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     int val2 = N + 2; 
     int max = MAX(M, MAX(N, O));
     float invMax = 1.0f / max;
+    int y = M + 2;
+    int z = (M + 2) * (N + 2);
 
     #pragma omp parallel for collapse(3) schedule(static)  
     for (int k = 1; k <= O; k++) {
@@ -227,8 +232,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
         for (int i = 1; i <= M; i++) {
           int idx = IX(i, j, k);
 
-          div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + 86] -
-                               v[idx - 86] + w[idx + 7396] - w[idx - 7396])) * invMax;
+          div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + y] -
+                               v[idx - y] + w[idx + z] - w[idx - z])) * invMax;
           p[idx] = 0;
         }
       }
@@ -246,8 +251,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
           int idx = IX(i, j, k);
 
           u[idx] -= 0.5f * (p[idx + 1] - p[idx - 1]);
-          v[idx] -= 0.5f * (p[idx + 86] - p[idx - 86]);
-          w[idx] -= 0.5f * (p[idx + 7396] - p[idx - 7396]);
+          v[idx] -= 0.5f * (p[idx + y] - p[idx - y]);
+          w[idx] -= 0.5f * (p[idx + z] - p[idx - z]);
         }
       }
     }

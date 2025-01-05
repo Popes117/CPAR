@@ -3,7 +3,7 @@
 #include <iostream>
 #include <vector>
 
-#define SIZE 84
+#define SIZE 168
 
 #define IX(i, j, k) ((i) + (M + 2) * (j) + (M + 2) * (N + 2) * (k))
 
@@ -103,7 +103,6 @@ void simulate(EventManager &eventManager, int timesteps) {
     // Perform the simulation steps
     vel_step(M, N, O, u, v, w, u_prev, v_prev, w_prev, visc, dt);
     dens_step(M, N, O, dens, dens_prev, u, v, w, diff, dt);
-    std::cout << "Timestep " << t << std::endl;
   }
 }
 

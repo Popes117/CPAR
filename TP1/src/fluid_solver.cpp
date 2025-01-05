@@ -96,6 +96,8 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
     int val2 = N + 2;
     float x_im1, x_ip1, x_jm1, x_jp1, x_km1, x_kp1;
     float div = 1/c;
+    int y = M + 2;
+    int z = (M + 2) * (N + 2);
 
     // New version with fewer repetitions in the loops
     for (int l = 0; l < LINEARSOLVERTIMES; l++) {
@@ -111,10 +113,10 @@ void lin_solve(int M, int N, int O, int b, float *x, float *x0, float a, float c
                                 x_im1 = x[idx - 1];
                                 x_ip1 = x[idx + 1];
                                 
-                                x_jm1 = x[idx - 44];
-                                x_jp1 = x[idx + 44];
-                                x_km1 = x[idx - 1936];
-                                x_kp1 = x[idx + 1936];
+                                x_jm1 = x[idx - y];
+                                x_jp1 = x[idx + y];
+                                x_km1 = x[idx - z];
+                                x_kp1 = x[idx + z];
                                 // Calculates with temporarily stored results
                                 x[idx] = (x0[idx] + a * (x_im1 + x_ip1 + x_jm1 + x_jp1 + x_km1 + x_kp1)) * div;
                                 idx += 1;
@@ -208,6 +210,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
   int max = MAX(M, MAX(N, O));
   float invMax = 1.0f / max;
   int blockSize = 4;  // Tamanho do bloco arbitrário, pode ser ajustado para corresponder ao tamanho de cache.
+  int y = M + 2;
+  int z = (M + 2) * (N + 2);
 
   // Loop Blocking for the calculation of div and p
   for (int kk = 1; kk <= O; kk += blockSize) {
@@ -219,8 +223,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
             int idx = IX(ii, j, k);
 
             for (int i = ii; i < ii + blockSize && i <= M; i++) {
-              div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + 44] -
-                                   v[idx - 44] + w[idx + 1936] - w[idx - 1936])) * invMax;
+              div[idx] = (-0.5f * (u[idx + 1] - u[idx - 1] + v[idx + y] -
+                                   v[idx - y] + w[idx + z] - w[idx - z])) * invMax;
               p[idx] = 0;
               idx+=1;
             }
@@ -245,8 +249,8 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
 
             for (int i = ii; i < ii + blockSize && i <= M; i++) {
               u[idx] -= 0.5f * (p[idx + 1] - p[idx - 1]);
-              v[idx] -= 0.5f * (p[idx + 44] - p[idx - 44]);
-              w[idx] -= 0.5f * (p[idx + 1936] - p[idx - 1936]);
+              v[idx] -= 0.5f * (p[idx + y] - p[idx - y]);
+              w[idx] -= 0.5f * (p[idx + z] - p[idx - z]);
               idx+=1;
             }
           }

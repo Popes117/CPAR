@@ -4,7 +4,7 @@ SRCS = src/main.cpp src/fluid_solver.cpp src/EventManager.cpp
 BIN = bin/
 
 all:
-	$(CPP) $(SRCS) -o $(BIN)fluid_sim
+	$(CPP) $(SRCS) -o fluid_sim
 
 clean:
 	@echo Cleaning up...
@@ -14,8 +14,8 @@ clean:
 prof:
 	$(CPP) $(CFLAGS) $(PROF_FLAGS) $(SRCS) -o $(BIN)fluid_sim
 
-srun-prof: prof
-	srun --partition=cpar --exclusive perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores ./$(BIN)fluid_sim
+srun-prof: all
+	sbatch --partition=day --cpus-per-task=1 --exclusive --wrap="perf stat -r 3 -e instructions,cycles,branch-misses,L1-dcache-loads,L1-dcache-load-misses,cycles,duration_time ./fluid_sim"
 
 run-prof: prof
 	./$(BIN)fluid_sim 

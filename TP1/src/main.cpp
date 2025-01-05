@@ -5,7 +5,7 @@
 #include <iostream>
 #include <chrono>
 
-#define SIZE 42
+#define SIZE 168
 #define IX(i, j, k) ((i) + (val) * (j) + (val) * (val2) * (k)) //Compute 1D index from 3D coordinates 
 
 // Globals for the grid size

@@ -115,7 +115,7 @@ __global__ void set_bnd_kernel(
 
 void launch_set_bnd_kernel(int M, int N, int O, int b, float *x) {
 
-    dim3 blockDim(16, 16);
+    dim3 blockDim(16, 8);
     dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
                    (N + blockDim.y - 1) / blockDim.y);
     set_bnd_kernel<<<gridDim, blockDim>>>(
@@ -207,7 +207,7 @@ __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0
                    x[idx - y] + x[idx + y] +
                    x[idx - z] + x[idx + z])) * divv;
 
-#if 1
+#if 0
 
 // ----------------------- Método com Redução -----------------------
     
@@ -248,7 +248,7 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
         // Processa células vermelhas
         lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, true, changes_d, converged_d, tol);
 
-#if 1
+#if 0
 
 // ----------------------- Método com Redução -----------------------
 
@@ -268,8 +268,8 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
 
 
 #endif
-    } while (max_c > tol && ++l < 20);
-    //} while (!converged_h && ++l < 20);
+    //} while (max_c > tol && ++l < 20);
+    } while (!converged_h && ++l < 20);
 }
 
 // Diffusion step (uses implicit method)
