@@ -20,10 +20,8 @@ int ixm1n10, ixmn10, ixm1n0, ixm1n11;
 __global__ void add_source_kernel(int M, int N, int O, float *x, float *s, float dt) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
 
-    // O tamanho total da grade
     int size = (M + 2) * (N + 2) * (O + 2);
 
-    // Garantir que o índice não ultrapasse o tamanho da grade
     if (idx < size) {
         x[idx] += dt * s[idx];
     }
@@ -37,7 +35,6 @@ void launch_add_source_kernel(int M, int N, int O, float *x, float *s, float dt)
     int threadsPerBlock = 128;
     int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
 
-    // Chamada ao kernel
     add_source_kernel<<<blocksPerGrid, threadsPerBlock>>>(M, N, O, x, s, dt);
 }
 
@@ -145,7 +142,7 @@ __global__ void max_reduce(float *g_idata, float *g_odata, unsigned int n) {
     // Carrega elementos para memória compartilhada
     while (i < n) {
         sdata[tid] = fmaxf(sdata[tid], g_idata[i]);
-        if (i + blockSize < n) {  // Garante que não acesse fora do limite
+        if (i + blockSize < n) { 
             sdata[tid] = fmaxf(sdata[tid], g_idata[i + blockSize]);
         }
         i += gridSize;
@@ -179,10 +176,8 @@ void launch_max_reduce(float *d_idata, float *d_odata, float *d_intermediate, un
     const unsigned int blockSize = 128; 
     const unsigned int gridSize = (n + blockSize * 2 - 1) / (blockSize * 2);
 
-    // Lança o kernel
     max_reduce<blockSize><<<gridSize, blockSize, blockSize * sizeof(float)>>>(d_idata, d_intermediate, n);
 
-    // Reduz o resultado dos blocos em um único valor
     max_reduce<blockSize><<<1, blockSize, blockSize * sizeof(float)>>>(d_intermediate, d_odata, gridSize);
 }
 
@@ -212,11 +207,21 @@ __global__ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0
                    x[idx - y] + x[idx + y] +
                    x[idx - z] + x[idx + z])) * divv;
 
-    // Calcula a alteração e atualiza max_c de forma atómica
-    //changes[idx] = fabsf(x[idx] - old_x);
+#if 1
+
+// ----------------------- Método com Redução -----------------------
+    
+    changes[idx] = fabsf(x[idx] - old_x);
+
+#else
+
+// ----------------------- Método sem Redução, com verificação da flag -----------------------
+
     if (fabs(x[idx] - old_x) > tol)
       *d_converged = false;
-    
+
+#endif
+
 }
 
 
@@ -243,18 +248,28 @@ void lin_solve_kernel(int M, int N, int O, int b, float *x, float *x0, float a, 
         // Processa células vermelhas
         lin_solve_kernel<<<gridDim, blockDim>>>(M, N, O, b, x, x0, a, c, true, changes_d, converged_d, tol);
 
+#if 1
+
+// ----------------------- Método com Redução -----------------------
+
         // Calcula o valor máximo em `changes_d`
-        //launch_max_reduce(changes_d, d_max_c, d_intermediate, (M + 2) * (N + 2) * (O + 2));
+        launch_max_reduce(changes_d, d_max_c, d_intermediate, (M + 2) * (N + 2) * (O + 2));
 
         // Copia o resultado para o host
-        //cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&max_c, d_max_c, sizeof(float), cudaMemcpyDeviceToHost);
+
+#else
+
+// ----------------------- Método sem Redução, com verificação da flag -----------------------
 
         cudaMemcpy(&converged_h, converged_d, sizeof(bool), cudaMemcpyDeviceToHost);
 
         launch_set_bnd_kernel(M, N, O, b, x);
 
-    //} while (max_c > tol && ++l < 20);
-    } while (!converged_h && ++l < 20);
+
+#endif
+    } while (max_c > tol && ++l < 20);
+    //} while (!converged_h && ++l < 20);
 }
 
 // Diffusion step (uses implicit method)
@@ -384,7 +399,6 @@ void project(int M, int N, int O, float *u, float *v, float *w, float *p, float 
     int max = MAX(M, MAX(N, O));
     float invMax = 1.0f / max;
 
-    // MUDA AQUI TMB
     dim3 blockDim(16, 4, 2);
     dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
                    (N + blockDim.y - 1) / blockDim.y,
