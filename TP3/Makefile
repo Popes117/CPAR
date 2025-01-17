@@ -1,18 +1,15 @@
 CPP = nvcc
 CXXFLAGS = --std=c++17 -O3 -arch=sm_35
-COFASTFLAGS = --std=c++17 -Xcompiler -Ofast -arch=sm_35
-SRCS = src/main.cu src/fluid_solver.cu src/EventManager.cpp 
+SRCS = TP3/src/main.cu TP3/src/fluid_solver.cu TP3/src/EventManager.cpp
 
 all:
 	$(CPP) $(CXXFLAGS) $(SRCS) -o fluid_sim
 
 run: all
-	sbatch ./cuda.sh
+	sbatch TP3/cuda.sh
 
-mem_check:
-	$(CPP) $(CXXFLAGS) $(SRCS) -o fluid_sim
-	sbatch ./cuda_mem_check.sh
+mem_check: all
+	sbatch TP3/cuda_mem_check.sh
 
-time_check:
-	$(CPP) $(CXXFLAGS) $(SRCS) -o fluid_sim
-	sbatch ./cuda_time_check.sh
+time_check: all
+	sbatch TP3/cuda_time_check.sh

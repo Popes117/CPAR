@@ -162,7 +162,7 @@ void simulate(EventManager &eventManager, int timesteps) {
 int main() {
   // Initialize EventManager
   EventManager eventManager;
-  eventManager.read_events("events.txt");
+  eventManager.read_events("TP3/events.txt");
 
   // Get the total number of timesteps from the event file
   int timesteps = eventManager.get_total_timesteps();
